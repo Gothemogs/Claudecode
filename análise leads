@@ -1,0 +1,170 @@
+import requests
+from datetime import datetime, timezone
+import os
+
+# Regra de janela mínima para reabrir/criar lead
+MIN_DIAS_NOVO_LEAD = 30
+# Fase que consideramos "perdido" no objeto lead
+FASE_PERDIDO = "unqualified-stage-id"
+
+def parse_hubspot_date(date_value):
+    """
+    Converte campo de data do HubSpot para datetime (UTC).
+    Aceita:
+      - epoch em milissegundos (int/str com >= 12 dígitos)
+      - 'YYYY-MM-DD'
+      - ISO 8601 ('2025-08-01T12:34:56Z')
+    """
+    if date_value is None:
+        return None
+    try:
+        # Epoch em ms
+        if (isinstance(date_value, int) or (isinstance(date_value, str) and date_value.isdigit())) and len(str(date_value)) >= 12:
+            ts = int(date_value) / 1000
+            return datetime.fromtimestamp(ts, tz=timezone.utc)
+    except Exception:
+        pass
+    try:
+        # Somente data
+        return datetime.strptime(str(date_value)[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except Exception:
+        pass
+    try:
+        # ISO
+        return datetime.fromisoformat(str(date_value).replace("Z", "+00:00"))
+    except Exception:
+        pass
+    raise ValueError(f"Formato de data desconhecido: {date_value}")
+
+def get_owner_name(owner_id, token):
+    """
+    Busca o nome do proprietário a partir do owner_id (fallback para e-mail ou próprio ID).
+    """
+    if not owner_id:
+        return None
+    url = f"https://api.hubapi.com/crm/v3/owners/{owner_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    if response.status_code != 200:
+        return None
+    data = response.json()
+    first = data.get("firstName", "") or ""
+    last  = data.get("lastName", "") or ""
+    email = data.get("email", "") or ""
+    nome = f"{first} {last}".strip() or (email or str(owner_id))
+    return nome
+
+def main(event):
+    input_fields = event.get("inputFields", {})
+    contact_id       = input_fields.get("hs_object_id")
+    data_ultimo_form = input_fields.get("data_de_envio___ultimo_formulario")  # pode não existir!
+    hubspot_token    = os.getenv("automacao_hubspot")
+
+    # 1) Exigimos apenas token e ID do contato. A data do formulário pode faltar.
+    if not contact_id or not hubspot_token:
+        return {"outputFields": {
+            "erro": "Faltando ID do contato ou token.",
+            "criar_novo_lead": 0
+        }}
+
+    headers = {
+        "Authorization": f"Bearer {hubspot_token}",
+        "Content-Type": "application/json"
+    }
+
+    # 2) Se NÃO houver data do formulário → trate como PRIMERIO ENVIO (libera criação)
+    if not data_ultimo_form:
+        return {"outputFields": {
+            "motivo": "Sem data de envio do formulário; considerado primeiro contato.",
+            "lead_mais_recente_id": None,
+            "lead_mais_recente_owner_id": None,
+            "lead_mais_recente_owner_name": None,
+            "dias_entre_formulario_e_lead": None,
+            "criar_novo_lead": 1
+        }}
+
+    # 3) Tenta converter a data do formulário; se vier inválida, também libera criação
+    try:
+        data_formulario = parse_hubspot_date(data_ultimo_form)
+    except Exception as e:
+        return {"outputFields": {
+            "motivo": f"Data do formulário inválida ({e}); considerado primeiro contato.",
+            "lead_mais_recente_id": None,
+            "lead_mais_recente_owner_id": None,
+            "lead_mais_recente_owner_name": None,
+            "dias_entre_formulario_e_lead": None,
+            "criar_novo_lead": 1
+        }}
+
+    # 4) Buscar leads associados ao contato
+    url_associacoes = f"https://api.hubapi.com/crm/v4/objects/contacts/{contact_id}/associations/leads"
+    response = requests.get(url_associacoes, headers=headers)
+    if response.status_code != 200:
+        return {"outputFields": {
+            "erro": "Falha ao buscar associações de leads.",
+            "criar_novo_lead": 0
+        }}
+
+    leads = response.json().get("results", []) or []
+    leads_ativos = []
+
+    # 5) Coleta todos os leads ATIVOS (não 'Perdido') com owner e data de criação
+    for lead in leads:
+        lead_id = lead.get("id") or lead.get("toObjectId")
+        if not lead_id:
+            continue
+
+        url_lead = (
+            f"https://api.hubapi.com/crm/v3/objects/leads/{lead_id}"
+            "?properties=hs_createdate,hs_pipeline_stage,hubspot_owner_id"
+        )
+        response_lead = requests.get(url_lead, headers=headers)
+        if response_lead.status_code != 200:
+            continue
+
+        props = response_lead.json().get("properties", {}) or {}
+        if props.get("hs_pipeline_stage") == FASE_PERDIDO:
+            # Leads em 'Perdido' não entram no bloqueio
+            continue
+
+        created_at = props.get("hs_createdate")
+        owner_id   = props.get("hubspot_owner_id")
+        if created_at:
+            try:
+                data_criacao_lead = parse_hubspot_date(created_at)
+                if data_criacao_lead:
+                    leads_ativos.append({
+                        "lead_id": lead_id,
+                        "data_criacao": data_criacao_lead,
+                        "owner_id": owner_id
+                    })
+            except Exception:
+                continue
+
+    # 6) Se houver lead ativo, compara com a data do formulário
+    if leads_ativos:
+        lead_mais_recente = max(leads_ativos, key=lambda l: l["data_criacao"])
+        dias_diferenca = abs((data_formulario - lead_mais_recente["data_criacao"]).days)
+        owner_id = lead_mais_recente.get("owner_id")
+        owner_name = get_owner_name(owner_id, hubspot_token) if owner_id else None
+
+        # Dentro da janela → NÃO cria (mas devolve infos para notificar o SDR)
+        if dias_diferenca < MIN_DIAS_NOVO_LEAD:
+            return {"outputFields": {
+                "motivo": f"Lead ativo recente encontrado (< {MIN_DIAS_NOVO_LEAD} dias).",
+                "lead_mais_recente_id": lead_mais_recente["lead_id"],
+                "lead_mais_recente_owner_id": owner_id,
+                "lead_mais_recente_owner_name": owner_name,
+                "dias_entre_formulario_e_lead": dias_diferenca,
+                "criar_novo_lead": 0
+            }}
+
+    # 7) Sem lead ativo recente (ou nenhum lead ativo) → libera criação
+    return {"outputFields": {
+        "motivo": "Sem lead ativo recente conflitante.",
+        "lead_mais_recente_id": None,
+        "lead_mais_recente_owner_id": None,
+        "lead_mais_recente_owner_name": None,
+        "dias_entre_formulario_e_lead": None,
+        "criar_novo_lead": 1
+    }}
