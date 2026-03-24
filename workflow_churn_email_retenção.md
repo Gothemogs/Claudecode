@@ -117,11 +117,10 @@ def get_safe(url, params=None):
 
 # ─── HubDB ────────────────────────────────────────────────────────────────────
 
-def buscar_bairro_hubdb(nome_bairro: str):
+def buscar_bairro_hubdb(nome_bairro: str) -> Optional[dict]:
     url = f"https://api.hubapi.com/cms/v3/hubdb/tables/{HUBDB_TABLE_ID}/rows"
     bairro_norm = normalizar(nome_bairro)
     after = None
-    primeira_row = None
 
     while True:
         params = {"limit": 100}
@@ -132,30 +131,16 @@ def buscar_bairro_hubdb(nome_bairro: str):
         resultados = data.get("results", [])
 
         for row in resultados:
-            if primeira_row is None:
-                primeira_row = row  # guarda para debug
-
-            nome_values = normalizar(row.get("values", {}).get("name", "") or "")
-            nome_root = normalizar(row.get("name", "") or "")
-
-            # Match exato
-            if nome_values == bairro_norm or nome_root == bairro_norm:
-                return row, None
-
-            # Match parcial (um contém o outro)
-            if bairro_norm in nome_values or nome_values in bairro_norm:
-                return row, None
-            if bairro_norm in nome_root or nome_root in bairro_norm:
-                return row, None
+            nome_row = normalizar(row.get("values", {}).get("bairro", "") or "")
+            if nome_row == bairro_norm:
+                return row
 
         paging = data.get("paging", {})
         after = paging.get("next", {}).get("after")
         if not after:
             break
 
-    # Não encontrou — retorna None + debug da primeira row
-    debug = json.dumps(primeira_row) if primeira_row else "tabela vazia"
-    return None, debug
+    return None
 
 
 # ─── Associações HubSpot ──────────────────────────────────────────────────────
@@ -195,9 +180,8 @@ def main(event):
     ocorrencias = ""
     encontrado = "0"
 
-    hubdb_debug = ""
     if bairro:
-        row, hubdb_debug = buscar_bairro_hubdb(bairro)
+        row = buscar_bairro_hubdb(bairro)
         if row:
             values = row.get("values", {})
             protegidos = str(values.get("protegidos", "") or "")
@@ -209,7 +193,6 @@ def main(event):
         "outputFields": {
             "encontrado": encontrado,
             "bairro_recebido": bairro,
-            "hubdb_debug": hubdb_debug,         # debug: primeira row da tabela quando não acha
             "decisor_contact_id": decisor_id,
             "outros_contatos_json": json.dumps(outros_contatos),
             "locais_ids_json": json.dumps(locais_ids),
