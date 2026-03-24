@@ -93,7 +93,7 @@ PIPELINE_EXECUTIVO_ID = "79388826"
 
 # Tipo do objeto customizado "Local" no HubSpot (formato: "2-XXXXXXX")
 # Para descobrir: Configurações > Objetos > Objetos personalizados > Local > copiar o ID da URL
-LOCAL_OBJECT_TYPE = "SEU_LOCAL_OBJECT_TYPE_AQUI"
+LOCAL_OBJECT_TYPE = "2-17828781"
 
 HEADERS = {
     "Authorization": f"Bearer {HUBSPOT_TOKEN}",
