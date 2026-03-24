@@ -117,10 +117,11 @@ def get_safe(url, params=None):
 
 # ─── HubDB ────────────────────────────────────────────────────────────────────
 
-def buscar_bairro_hubdb(nome_bairro: str) -> Optional[dict]:
+def buscar_bairro_hubdb(nome_bairro: str):
     url = f"https://api.hubapi.com/cms/v3/hubdb/tables/{HUBDB_TABLE_ID}/rows"
     bairro_norm = normalizar(nome_bairro)
     after = None
+    primeira_row = None
 
     while True:
         params = {"limit": 100}
@@ -131,19 +132,30 @@ def buscar_bairro_hubdb(nome_bairro: str) -> Optional[dict]:
         resultados = data.get("results", [])
 
         for row in resultados:
-            # Tenta nome na coluna "name" dentro de values (coluna customizada)
-            nome_values = row.get("values", {}).get("name", "") or ""
-            # Tenta também o campo "name" de nível raiz (nome padrão da row)
-            nome_root = row.get("name", "") or ""
-            if normalizar(nome_values) == bairro_norm or normalizar(nome_root) == bairro_norm:
-                return row
+            if primeira_row is None:
+                primeira_row = row  # guarda para debug
+
+            nome_values = normalizar(row.get("values", {}).get("name", "") or "")
+            nome_root = normalizar(row.get("name", "") or "")
+
+            # Match exato
+            if nome_values == bairro_norm or nome_root == bairro_norm:
+                return row, None
+
+            # Match parcial (um contém o outro)
+            if bairro_norm in nome_values or nome_values in bairro_norm:
+                return row, None
+            if bairro_norm in nome_root or nome_root in bairro_norm:
+                return row, None
 
         paging = data.get("paging", {})
         after = paging.get("next", {}).get("after")
         if not after:
             break
 
-    return None
+    # Não encontrou — retorna None + debug da primeira row
+    debug = json.dumps(primeira_row) if primeira_row else "tabela vazia"
+    return None, debug
 
 
 # ─── Associações HubSpot ──────────────────────────────────────────────────────
@@ -183,8 +195,9 @@ def main(event):
     ocorrencias = ""
     encontrado = "0"
 
+    hubdb_debug = ""
     if bairro:
-        row = buscar_bairro_hubdb(bairro)
+        row, hubdb_debug = buscar_bairro_hubdb(bairro)
         if row:
             values = row.get("values", {})
             protegidos = str(values.get("protegidos", "") or "")
@@ -195,10 +208,11 @@ def main(event):
     return {
         "outputFields": {
             "encontrado": encontrado,
-            "bairro_recebido": bairro,              # debug: confirma o valor recebido
+            "bairro_recebido": bairro,
+            "hubdb_debug": hubdb_debug,         # debug: primeira row da tabela quando não acha
             "decisor_contact_id": decisor_id,
             "outros_contatos_json": json.dumps(outros_contatos),
-            "locais_ids_json": json.dumps(locais_ids),   # debug: confirma os locais
+            "locais_ids_json": json.dumps(locais_ids),
             "protegidos": protegidos,
             "indiciados": indiciados,
             "ocorrencias": ocorrencias,
