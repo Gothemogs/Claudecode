@@ -368,7 +368,7 @@ O código usa os seguintes nomes de coluna — confirmar que batem com a tabela:
 
 | Variável no código | Coluna no HubDB |
 |--------------------|----------------|
-| `values["name"]` | `name` (nome do bairro) |
+| `values["bairro"]` | `bairro` (nome do bairro) |
 | `values["protegidos"]` | `protegidos` |
 | `values["indiciados"]` | `indiciados` |
 | `values["ocorrencias"]` | `ocorrencias` |
