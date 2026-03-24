@@ -87,8 +87,8 @@ import re
 HUBSPOT_TOKEN = os.environ["automacao_hubspot"]
 HUBDB_TABLE_ID = "SEU_TABLE_ID_AQUI"  # Substituir pelo ID real da tabela HubDB
 
-# ID interno do pipeline "executivo de vendas 2.0" — confirmar no HubSpot
-PIPELINE_EXECUTIVO_ID = "SEU_PIPELINE_ID_AQUI"
+# ID interno do pipeline "Executivo de Vendas 2.0"
+PIPELINE_EXECUTIVO_ID = "79388826"
 
 HEADERS = {
     "Authorization": f"Bearer {HUBSPOT_TOKEN}",
@@ -360,7 +360,7 @@ Antes de ativar o workflow, você precisa levantar os seguintes IDs:
 | **ID da tabela HubDB** de bairros | Marketing > HubDB > abrir tabela > URL do navegador | `HUBDB_TABLE_ID` |
 | **ID do pipeline** "Retenção" (tickets) | Config > Objetos > Tickets > Pipelines | No trigger do workflow |
 | **ID do estágio** "Em tratativa" | Mesmo lugar acima | No trigger do workflow |
-| **ID do pipeline** "executivo de vendas 2.0" (deals) | Config > Objetos > Negócios > Pipelines | `PIPELINE_EXECUTIVO_ID` |
+| **ID do pipeline** "Executivo de Vendas 2.0" (deals) | `79388826` (confirmado) | `PIPELINE_EXECUTIVO_ID` |
 | **ID do template** de e-mail Modelo A (decisor) | Marketing > E-mail > Templates | `EMAIL_MODELO_A_ID` |
 | **ID do template** de e-mail Modelo B (demais) | Marketing > E-mail > Templates | `EMAIL_MODELO_B_ID` |
 | **Nome interno** da propriedade "Bairro (Ocorrência)" no ticket | Config > Propriedades > Filtrar por Tickets | `bairro_ocorrencia` no input |
