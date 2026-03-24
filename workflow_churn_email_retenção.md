@@ -115,16 +115,28 @@ def get(url, params=None):
 
 def buscar_bairro_hubdb(nome_bairro: str) -> Optional[dict]:
     url = f"https://api.hubapi.com/cms/v3/hubdb/tables/{HUBDB_TABLE_ID}/rows"
-    resultados = get(url, params={"name__icontains": nome_bairro, "limit": 5}).get("results", [])
-
-    if not resultados:
-        return None
-
     bairro_norm = normalizar(nome_bairro)
-    for row in resultados:
-        if normalizar(row.get("values", {}).get("name", "")) == bairro_norm:
-            return row
-    return resultados[0]
+    after = None
+
+    while True:
+        params = {"limit": 100}
+        if after:
+            params["after"] = after
+
+        data = get(url, params=params)
+        resultados = data.get("results", [])
+
+        for row in resultados:
+            nome_row = row.get("values", {}).get("name", "") or ""
+            if normalizar(nome_row) == bairro_norm:
+                return row
+
+        paging = data.get("paging", {})
+        after = paging.get("next", {}).get("after")
+        if not after:
+            break
+
+    return None
 
 
 # ─── Associações HubSpot ──────────────────────────────────────────────────────
