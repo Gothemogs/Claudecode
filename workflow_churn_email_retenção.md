@@ -254,7 +254,7 @@ def get_email_contato(contact_id: str) -> Optional[str]:
     return resp.json().get("properties", {}).get("email")
 
 
-def enviar_email(contact_id: str, email_address: str, template_id: int, props: dict) -> bool:
+def enviar_email(contact_id: str, email_address: str, template_id: int, props: dict) -> tuple:
     url = "https://api.hubapi.com/marketing/v3/transactional/single-email/send"
     payload = {
         "emailId": template_id,
@@ -271,7 +271,7 @@ def enviar_email(contact_id: str, email_address: str, template_id: int, props: d
         },
     }
     resp = requests.post(url, headers=HEADERS, json=payload, timeout=30)
-    return resp.status_code in (200, 201)
+    return resp.status_code in (200, 201), f"{resp.status_code}:{resp.text[:300]}"
 
 
 def main(event):
@@ -285,7 +285,8 @@ def main(event):
     }
 
     try:
-        outros_ids: List[str] = json.loads(outros_json)
+        parsed = json.loads(outros_json)
+        outros_ids: List[str] = parsed if isinstance(parsed, list) else []
     except (json.JSONDecodeError, TypeError):
         outros_ids = []
 
@@ -296,22 +297,22 @@ def main(event):
     if decisor_id:
         email_decisor = get_email_contato(decisor_id)
         if email_decisor:
-            ok = enviar_email(decisor_id, email_decisor, EMAIL_MODELO_A_ID, props)
+            ok, motivo = enviar_email(decisor_id, email_decisor, EMAIL_MODELO_A_ID, props)
             if ok:
                 enviados += 1
             else:
-                erros.append(f"decisor:{decisor_id}")
+                erros.append(f"decisor:{decisor_id}|{motivo}")
 
     # Envia Modelo B aos demais contatos
     for cid in outros_ids:
         email = get_email_contato(cid)
         if not email:
             continue
-        ok = enviar_email(cid, email, EMAIL_MODELO_B_ID, props)
+        ok, motivo = enviar_email(cid, email, EMAIL_MODELO_B_ID, props)
         if ok:
             enviados += 1
         else:
-            erros.append(f"outros:{cid}")
+            erros.append(f"outros:{cid}|{motivo}")
 
     return {
         "outputFields": {
