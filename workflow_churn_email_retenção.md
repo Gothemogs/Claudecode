@@ -85,8 +85,8 @@ import unicodedata
 import re
 from typing import Optional, List, Set
 
-HUBSPOT_TOKEN = os.environ["automacao_hubspot"]
-HUBDB_TABLE_ID = "SEU_TABLE_ID_AQUI"  # Substituir pelo ID real da tabela HubDB
+HUBSPOT_TOKEN = os.environ["Hub_DB"]
+HUBDB_TABLE_ID = "224700702"
 
 # ID interno do pipeline "Executivo de Vendas 2.0"
 PIPELINE_EXECUTIVO_ID = "79388826"
