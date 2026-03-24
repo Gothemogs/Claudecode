@@ -83,6 +83,7 @@ import json
 import requests
 import unicodedata
 import re
+from typing import Optional, List, Set
 
 HUBSPOT_TOKEN = os.environ["automacao_hubspot"]
 HUBDB_TABLE_ID = "SEU_TABLE_ID_AQUI"  # Substituir pelo ID real da tabela HubDB
@@ -112,7 +113,7 @@ def get(url, params=None):
 
 # ─── HubDB ────────────────────────────────────────────────────────────────────
 
-def buscar_bairro_hubdb(nome_bairro: str) -> dict | None:
+def buscar_bairro_hubdb(nome_bairro: str) -> Optional[dict]:
     url = f"https://api.hubapi.com/cms/v3/hubdb/tables/{HUBDB_TABLE_ID}/rows"
     resultados = get(url, params={"name__icontains": nome_bairro, "limit": 5}).get("results", [])
 
@@ -128,7 +129,7 @@ def buscar_bairro_hubdb(nome_bairro: str) -> dict | None:
 
 # ─── Associações HubSpot ──────────────────────────────────────────────────────
 
-def get_associacoes(objeto_tipo: str, objeto_id: str, tipo_associado: str) -> list[str]:
+def get_associacoes(objeto_tipo: str, objeto_id: str, tipo_associado: str) -> List[str]:
     """
     Retorna lista de IDs do tipo_associado vinculados ao objeto.
     objeto_tipo: "tickets", "companies", "deals", etc.
@@ -139,7 +140,7 @@ def get_associacoes(objeto_tipo: str, objeto_id: str, tipo_associado: str) -> li
     return [str(item["toObjectId"]) for item in dados.get("results", [])]
 
 
-def get_deal_pipeline(deal_id: str) -> str | None:
+def get_deal_pipeline(deal_id: str) -> Optional[str]:
     url = f"https://api.hubapi.com/crm/v3/objects/deals/{deal_id}"
     dados = get(url, params={"properties": "pipeline"})
     return dados.get("properties", {}).get("pipeline")
@@ -184,7 +185,7 @@ def main(event):
     locais_ids = get_associacoes("tickets", ticket_id, "companies")
 
     # 4. Para cada local → busca negócios no pipeline correto → busca contatos
-    todos_contatos_negocios: set[str] = set()
+    todos_contatos_negocios: Set[str] = set()
 
     for local_id in locais_ids:
         deal_ids = get_associacoes("companies", local_id, "deals")
@@ -239,6 +240,7 @@ def main(event):
 import os
 import json
 import requests
+from typing import Optional, List
 
 HUBSPOT_TOKEN = os.environ["automacao_hubspot"]
 
@@ -252,7 +254,7 @@ EMAIL_MODELO_A_ID = SEU_EMAIL_A_ID_AQUI   # Modelo para o decisor
 EMAIL_MODELO_B_ID = SEU_EMAIL_B_ID_AQUI   # Modelo para demais contatos
 
 
-def get_email_contato(contact_id: str) -> str | None:
+def get_email_contato(contact_id: str) -> Optional[str]:
     url = f"https://api.hubapi.com/crm/v3/objects/contacts/{contact_id}"
     resp = requests.get(url, headers=HEADERS, params={"properties": "email"}, timeout=30)
     if resp.status_code != 200:
@@ -291,7 +293,7 @@ def main(event):
     }
 
     try:
-        outros_ids: list[str] = json.loads(outros_json)
+        outros_ids: List[str] = json.loads(outros_json)
     except (json.JSONDecodeError, TypeError):
         outros_ids = []
 
