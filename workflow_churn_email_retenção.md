@@ -88,9 +88,6 @@ from typing import Optional, List, Set
 HUBSPOT_TOKEN = os.environ["Hub_DB"]
 HUBDB_TABLE_ID = "224700702"
 
-# ID interno do pipeline "Executivo de Vendas 2.0"
-PIPELINE_EXECUTIVO_ID = "79388826"
-
 # Tipo do objeto customizado "Local" no HubSpot (formato: "2-XXXXXXX")
 # Para descobrir: Configurações > Objetos > Objetos personalizados > Local > copiar o ID da URL
 LOCAL_OBJECT_TYPE = "2-17828781"
@@ -157,12 +154,6 @@ def get_associacoes(objeto_tipo: str, objeto_id: str, tipo_associado: str) -> Li
     return [str(item["toObjectId"]) for item in dados.get("results", [])]
 
 
-def get_deal_pipeline(deal_id: str) -> Optional[str]:
-    url = f"https://api.hubapi.com/crm/v3/objects/deals/{deal_id}"
-    dados = get_safe(url, params={"properties": "pipeline"})
-    return dados.get("properties", {}).get("pipeline")
-
-
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main(event):
@@ -179,18 +170,12 @@ def main(event):
     # 2. Locais associados ao ticket (objeto customizado)
     locais_ids = get_associacoes("tickets", ticket_id, LOCAL_OBJECT_TYPE) if ticket_id else []
 
-    # 3. Para cada local → negócios no pipeline alvo → contatos
-    todos_contatos_negocios: Set[str] = set()
+    # 3. Para cada local → contatos diretos
+    todos_contatos_local: Set[str] = set()
     for local_id in locais_ids:
-        deal_ids = get_associacoes(LOCAL_OBJECT_TYPE, local_id, "deals")
-        for deal_id in deal_ids:
-            pipeline_id = get_deal_pipeline(deal_id)
-            if pipeline_id != PIPELINE_EXECUTIVO_ID:
-                continue
-            contatos_deal = get_associacoes("deals", deal_id, "contacts")
-            todos_contatos_negocios.update(contatos_deal)
+        todos_contatos_local.update(get_associacoes(LOCAL_OBJECT_TYPE, local_id, "contacts"))
 
-    outros_contatos = [c for c in todos_contatos_negocios if c != decisor_id]
+    outros_contatos = [c for c in todos_contatos_local if c != decisor_id]
 
     # ── Busca HubDB pelo bairro ────────────────────────────────────────────────
     protegidos = ""
