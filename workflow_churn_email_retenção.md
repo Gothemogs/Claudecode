@@ -91,6 +91,10 @@ HUBDB_TABLE_ID = "224700702"
 # ID interno do pipeline "Executivo de Vendas 2.0"
 PIPELINE_EXECUTIVO_ID = "79388826"
 
+# Tipo do objeto customizado "Local" no HubSpot (formato: "2-XXXXXXX")
+# Para descobrir: Configurações > Objetos > Objetos personalizados > Local > copiar o ID da URL
+LOCAL_OBJECT_TYPE = "SEU_LOCAL_OBJECT_TYPE_AQUI"
+
 HEADERS = {
     "Authorization": f"Bearer {HUBSPOT_TOKEN}",
     "Content-Type": "application/json",
@@ -105,10 +109,13 @@ def normalizar(texto: str) -> str:
     return re.sub(r"\s+", " ", sem_acento.strip().lower())
 
 
-def get(url, params=None):
-    resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
-    resp.raise_for_status()
-    return resp.json()
+def get_safe(url, params=None):
+    try:
+        resp = requests.get(url, headers=HEADERS, params=params, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return {}
 
 
 # ─── HubDB ────────────────────────────────────────────────────────────────────
@@ -123,12 +130,15 @@ def buscar_bairro_hubdb(nome_bairro: str) -> Optional[dict]:
         if after:
             params["after"] = after
 
-        data = get(url, params=params)
+        data = get_safe(url, params=params)
         resultados = data.get("results", [])
 
         for row in resultados:
-            nome_row = row.get("values", {}).get("name", "") or ""
-            if normalizar(nome_row) == bairro_norm:
+            # Tenta nome na coluna "name" dentro de values (coluna customizada)
+            nome_values = row.get("values", {}).get("name", "") or ""
+            # Tenta também o campo "name" de nível raiz (nome padrão da row)
+            nome_root = row.get("name", "") or ""
+            if normalizar(nome_values) == bairro_norm or normalizar(nome_root) == bairro_norm:
                 return row
 
         paging = data.get("paging", {})
@@ -142,19 +152,14 @@ def buscar_bairro_hubdb(nome_bairro: str) -> Optional[dict]:
 # ─── Associações HubSpot ──────────────────────────────────────────────────────
 
 def get_associacoes(objeto_tipo: str, objeto_id: str, tipo_associado: str) -> List[str]:
-    """
-    Retorna lista de IDs do tipo_associado vinculados ao objeto.
-    objeto_tipo: "tickets", "companies", "deals", etc.
-    tipo_associado: "contacts", "companies", "deals", etc.
-    """
     url = f"https://api.hubapi.com/crm/v4/objects/{objeto_tipo}/{objeto_id}/associations/{tipo_associado}"
-    dados = get(url)
+    dados = get_safe(url)
     return [str(item["toObjectId"]) for item in dados.get("results", [])]
 
 
 def get_deal_pipeline(deal_id: str) -> Optional[str]:
     url = f"https://api.hubapi.com/crm/v3/objects/deals/{deal_id}"
-    dados = get(url, params={"properties": "pipeline"})
+    dados = get_safe(url, params={"properties": "pipeline"})
     return dados.get("properties", {}).get("pipeline")
 
 
@@ -165,60 +170,53 @@ def main(event):
     ticket_id = str(inputs.get("ticket_id", "")).strip()
     bairro = str(inputs.get("bairro_ocorrencia", "")).strip()
 
-    saida_vazia = {
-        "outputFields": {
-            "encontrado": "0",
-            "protegidos": "",
-            "indiciados": "",
-            "ocorrencias": "",
-            "decisor_contact_id": "",
-            "outros_contatos_json": "[]",
-        }
-    }
+    # ── Busca contatos SEMPRE (independente do HubDB) ──────────────────────────
 
-    if not ticket_id or not bairro:
-        return saida_vazia
-
-    # 1. Busca HubDB
-    row = buscar_bairro_hubdb(bairro)
-    if not row:
-        return saida_vazia
-
-    values = row.get("values", {})
-    protegidos = str(values.get("protegidos", "") or "")
-    indiciados = str(values.get("indiciados", "") or "")
-    ocorrencias = str(values.get("ocorrencias", "") or "")
-
-    # 2. Contato decisor (associado direto ao ticket)
-    contatos_ticket = get_associacoes("tickets", ticket_id, "contacts")
+    # 1. Contato decisor (associado direto ao ticket)
+    contatos_ticket = get_associacoes("tickets", ticket_id, "contacts") if ticket_id else []
     decisor_id = contatos_ticket[0] if contatos_ticket else ""
 
-    # 3. Locais (empresas) associados ao ticket
-    locais_ids = get_associacoes("tickets", ticket_id, "companies")
+    # 2. Locais associados ao ticket (objeto customizado)
+    locais_ids = get_associacoes("tickets", ticket_id, LOCAL_OBJECT_TYPE) if ticket_id else []
 
-    # 4. Para cada local → busca negócios no pipeline correto → busca contatos
+    # 3. Para cada local → negócios no pipeline alvo → contatos
     todos_contatos_negocios: Set[str] = set()
-
     for local_id in locais_ids:
-        deal_ids = get_associacoes("companies", local_id, "deals")
+        deal_ids = get_associacoes(LOCAL_OBJECT_TYPE, local_id, "deals")
         for deal_id in deal_ids:
             pipeline_id = get_deal_pipeline(deal_id)
             if pipeline_id != PIPELINE_EXECUTIVO_ID:
-                continue  # ignora negócios fora do pipeline alvo
+                continue
             contatos_deal = get_associacoes("deals", deal_id, "contacts")
             todos_contatos_negocios.update(contatos_deal)
 
-    # 5. Remove o decisor da lista de "outros contatos"
     outros_contatos = [c for c in todos_contatos_negocios if c != decisor_id]
+
+    # ── Busca HubDB pelo bairro ────────────────────────────────────────────────
+    protegidos = ""
+    indiciados = ""
+    ocorrencias = ""
+    encontrado = "0"
+
+    if bairro:
+        row = buscar_bairro_hubdb(bairro)
+        if row:
+            values = row.get("values", {})
+            protegidos = str(values.get("protegidos", "") or "")
+            indiciados = str(values.get("indiciados", "") or "")
+            ocorrencias = str(values.get("ocorrencias", "") or "")
+            encontrado = "1"
 
     return {
         "outputFields": {
-            "encontrado": "1",
+            "encontrado": encontrado,
+            "bairro_recebido": bairro,              # debug: confirma o valor recebido
+            "decisor_contact_id": decisor_id,
+            "outros_contatos_json": json.dumps(outros_contatos),
+            "locais_ids_json": json.dumps(locais_ids),   # debug: confirma os locais
             "protegidos": protegidos,
             "indiciados": indiciados,
             "ocorrencias": ocorrencias,
-            "decisor_contact_id": decisor_id,
-            "outros_contatos_json": json.dumps(outros_contatos),
         }
     }
 ```
