@@ -74,7 +74,7 @@ Quando um ticket entra no estágio **"Em tratativa"** do pipeline **"Retenção"
 |-------|-------|
 | **Tipo** | CUSTOM_CODE |
 | **Runtime** | Python 3.9 |
-| **Secrets** | `Hub_DB`, `airtable_token` |
+| **Secrets** | `automacao_hubspot`, `airtable_token` |
 | **Input** | `ticket_id` ← `hs_object_id` do ticket, `uf_ocorrencia` ← propriedade `UF` do ticket |
 | **Output** | `encontrado`, `protegidos`, `indiciados`, `ocorrencias`, `decisor_email`, `outros_contatos_json` |
 
@@ -88,7 +88,7 @@ import unicodedata
 import re
 from typing import Optional, List, Set
 
-HUBSPOT_TOKEN = os.environ["Hub_DB"]
+HUBSPOT_TOKEN = os.environ["automacao_hubspot"]
 AIRTABLE_TOKEN = os.environ["airtable_token"]
 HUBDB_TABLE_ID = "224700702"
 AIRTABLE_BASE_ID = "app1uxxj9gL9otgrB"
@@ -415,7 +415,7 @@ def main(event):
   - `ticket_id` → propriedade do ticket `hs_object_id`
   - `uf_ocorrencia` → propriedade do ticket `UF`
 - **Outputs:** declarar `encontrado`, `uf_recebida`, `protegidos`, `indiciados`, `ocorrencias`, `decisor_email`, `outros_contatos_json`
-- **Secrets:** `Hub_DB`, `airtable_token`
+- **Secrets:** `automacao_hubspot`, `airtable_token`
 
 ### 3. Adicionar Branch
 - Output `encontrado` (da Ação 1) = `"1"` → ramo SIM
