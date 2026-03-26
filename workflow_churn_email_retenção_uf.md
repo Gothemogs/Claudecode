@@ -274,9 +274,11 @@ def main(event):
     decisor_contact_id = ""
     endereco_logradouro = ""
     if locais_ids:
-        props_local = get_propriedades_local(locais_ids[0], ["endereco", "logradouro"])
+        props_local = get_propriedades_local(locais_ids[0], ["endereco", "endereco_", "no_do_endereco"])
         identificador = props_local.get("endereco", "") or ""
-        endereco_logradouro = props_local.get("logradouro", "") or ""
+        rua = props_local.get("endereco_", "") or ""
+        numero = props_local.get("no_do_endereco", "") or ""
+        endereco_logradouro = f"{rua} {numero}".strip()
         if identificador:
             decisor_email = buscar_email_decisor_airtable(identificador)
 
