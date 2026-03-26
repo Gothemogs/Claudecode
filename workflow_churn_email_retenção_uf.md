@@ -94,9 +94,9 @@ import unicodedata
 import re
 from typing import Optional, List, Set
 
-HUBSPOT_TOKEN = os.environ["automacao_hubspot"]
+HUBSPOT_TOKEN = os.environ["Hub_DB"]
 AIRTABLE_TOKEN = os.environ["airtable_token"]
-HUBDB_TABLE_ID = "224700702"
+HUBDB_TABLE_ID = "224702045"
 AIRTABLE_BASE_ID = "app1uxxj9gL9otgrB"
 AIRTABLE_TABLE = "local"
 AIRTABLE_FIELD_EMAIL = "fldpy0Ufbxm9K4iKq"  # e-mail representante legal
@@ -327,7 +327,6 @@ def main(event):
             "link_botao": link_botao,
             "template_sindico_id": template_sindico_id,
             "template_moradores_id": template_moradores_id,
-            "debug_owner_id": owner_id,
         }
     }
 ```
