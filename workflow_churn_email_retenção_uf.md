@@ -183,7 +183,7 @@ def buscar_uf_hubdb(nome_uf: str) -> Optional[dict]:
         resultados = data.get("results", [])
 
         for row in resultados:
-            uf_row = normalizar(row.get("values", {}).get("uf", "") or "")
+            uf_row = normalizar(row.get("values", {}).get("estado", "") or "")
             if uf_row == uf_norm:
                 return row
 
