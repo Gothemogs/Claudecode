@@ -38,6 +38,7 @@ O modelo de e-mail é selecionado dinamicamente pela UF do ticket.
     - Consulta HubDB pela UF → protegidos, indiciados, ocorrencias
     - Busca Local → lê "endereco" (Identificador) e "logradouro"
     - Busca no Airtable pelo endereco → e-mail do síndico
+    - Busca no HubSpot o contato com esse e-mail → exclui dos moradores
     - Resolve owner_id → nome, telefone, e-mail do responsável
     - Monta link WhatsApp
     - Seleciona IDs dos templates (síndico + moradores) pela UF
@@ -229,6 +230,24 @@ def get_propriedades_local(local_id: str, propriedades: List[str]) -> dict:
     return dados.get("properties", {})
 
 
+def buscar_contato_por_email(email: str) -> str:
+    url = "https://api.hubapi.com/crm/v3/objects/contacts/search"
+    payload = {
+        "filterGroups": [{"filters": [{"propertyName": "email", "operator": "EQ", "value": email}]}],
+        "properties": ["email"],
+        "limit": 1,
+    }
+    try:
+        resp = requests.post(url, headers=HS_HEADERS, json=payload, timeout=30)
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+        if results:
+            return str(results[0]["id"])
+    except Exception:
+        pass
+    return ""
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main(event):
@@ -252,6 +271,7 @@ def main(event):
 
     # ── Decisor via Airtable + Logradouro do Local ─────────────────────────────
     decisor_email = ""
+    decisor_contact_id = ""
     endereco_logradouro = ""
     if locais_ids:
         props_local = get_propriedades_local(locais_ids[0], ["endereco", "logradouro"])
@@ -260,12 +280,16 @@ def main(event):
         if identificador:
             decisor_email = buscar_email_decisor_airtable(identificador)
 
-    # ── Contatos dos locais (moradores) ───────────────────────────────────────
+    # Busca o contato HubSpot do decisor para excluí-lo da lista de moradores
+    if decisor_email:
+        decisor_contact_id = buscar_contato_por_email(decisor_email)
+
+    # ── Contatos dos locais (moradores) — exclui o decisor ────────────────────
     todos_contatos_local: Set[str] = set()
     for local_id in locais_ids:
         todos_contatos_local.update(get_associacoes(LOCAL_OBJECT_TYPE, local_id, "contacts"))
 
-    outros_contatos_ids = list(todos_contatos_local)
+    outros_contatos_ids = [c for c in todos_contatos_local if c != decisor_contact_id]
 
     # ── Busca HubDB pela UF + seleciona templates ─────────────────────────────
     protegidos = ""
