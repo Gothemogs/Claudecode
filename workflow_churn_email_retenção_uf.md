@@ -210,7 +210,10 @@ def buscar_email_decisor_airtable(endereco: str) -> str:
         resp.raise_for_status()
         records = resp.json().get("records", [])
         if records:
-            return records[0].get("fields", {}).get(AIRTABLE_FIELD_EMAIL, "") or ""
+            valor = records[0].get("fields", {}).get(AIRTABLE_FIELD_EMAIL, "") or ""
+            if isinstance(valor, list):
+                return valor[0] if valor else ""
+            return valor
     except Exception:
         pass
     return ""
