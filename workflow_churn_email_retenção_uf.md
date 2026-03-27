@@ -213,6 +213,13 @@ def buscar_email_decisor_airtable(endereco: str) -> str:
             valor = records[0].get("fields", {}).get(AIRTABLE_FIELD_EMAIL, "") or ""
             if isinstance(valor, list):
                 return valor[0] if valor else ""
+            if isinstance(valor, str) and valor.startswith("["):
+                try:
+                    parsed = json.loads(valor)
+                    if isinstance(parsed, list):
+                        return parsed[0] if parsed else ""
+                except Exception:
+                    pass
             return valor
     except Exception:
         pass
