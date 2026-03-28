@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapa Visual do Mundo</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 14px 24px;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: #58a6ff;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    button {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button:hover { background: #30363d; border-color: #58a6ff; }
+
+    select {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      outline: none;
+    }
+
+    select:focus { border-color: #58a6ff; }
+
+    #map-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    svg:active { cursor: grabbing; }
+
+    .country {
+      stroke: #30363d;
+      stroke-width: 0.4px;
+      transition: fill 0.2s;
+      cursor: pointer;
+    }
+
+    .country:hover { stroke: #58a6ff; stroke-width: 1px; }
+
+    .graticule {
+      fill: none;
+      stroke: #1c2128;
+      stroke-width: 0.5px;
+    }
+
+    .sphere { fill: #0d2137; }
+
+    .outline {
+      fill: none;
+      stroke: #30363d;
+      stroke-width: 0.8px;
+    }
+
+    /* Tooltip */
+    #tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      max-width: 200px;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 10;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    }
+
+    #tooltip.visible { opacity: 1; }
+
+    #tooltip .name { font-weight: 600; color: #58a6ff; margin-bottom: 4px; }
+    #tooltip .info { color: #8b949e; font-size: 0.78rem; }
+
+    /* Legend */
+    #legend {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background: #161b22cc;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 0.78rem;
+      color: #8b949e;
+    }
+
+    #legend h3 { font-size: 0.8rem; color: #e6edf3; margin-bottom: 8px; }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .legend-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* Info panel */
+    #info-panel {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 0.82rem;
+      width: 220px;
+      display: none;
+    }
+
+    #info-panel.visible { display: block; }
+    #info-panel h2 { font-size: 1rem; color: #58a6ff; margin-bottom: 8px; }
+    #info-panel .row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    #info-panel .label { color: #8b949e; }
+    #info-panel .value { color: #e6edf3; font-weight: 500; }
+    #info-panel .close-btn {
+      position: absolute; top: 8px; right: 10px;
+      background: none; border: none; color: #8b949e;
+      cursor: pointer; font-size: 1rem; padding: 2px 6px;
+    }
+    #info-panel .close-btn:hover { color: #e6edf3; background: none; border: none; }
+
+    #zoom-info {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      background: #161b22cc;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.75rem;
+      color: #8b949e;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🌍 Mapa Visual do Mundo</h1>
+  <div class="controls">
+    <select id="projection-select">
+      <option value="naturalEarth1">Natural Earth</option>
+      <option value="orthographic">Globo 3D</option>
+      <option value="mercator">Mercator</option>
+      <option value="equalEarth">Equal Earth</option>
+      <option value="conicEqualArea">Cônica</option>
+    </select>
+    <select id="color-select">
+      <option value="continent">Por Continente</option>
+      <option value="single">Monocromático</option>
+      <option value="population">Por Região</option>
+    </select>
+    <button id="reset-btn">⟳ Resetar</button>
+  </div>
+</header>
+
+<div id="map-container">
+  <svg id="map"></svg>
+  <div id="tooltip">
+    <div class="name" id="tt-name"></div>
+    <div class="info" id="tt-continent"></div>
+  </div>
+  <div id="legend">
+    <h3>Continentes</h3>
+    <div id="legend-items"></div>
+  </div>
+  <div id="info-panel">
+    <button class="close-btn" id="close-panel">×</button>
+    <h2 id="panel-name"></h2>
+    <div class="row"><span class="label">Continente</span><span class="value" id="panel-continent"></span></div>
+    <div class="row"><span class="label">Código</span><span class="value" id="panel-code"></span></div>
+  </div>
+  <div id="zoom-info">Scroll para zoom · Arraste para mover</div>
+</div>
+
+<script>
+// Continent color map
+const continentColors = {
+  "Africa":        "#e67e5a",
+  "Asia":          "#5ab4e6",
+  "Europe":        "#5ae67e",
+  "North America": "#e6c05a",
+  "South America": "#b45ae6",
+  "Oceania":       "#5ae6d4",
+  "Antarctica":    "#a0aab4",
+};
+
+const singleColor = "#2d6a9f";
+
+// Country → continent mapping (ISO numeric → continent)
+// We'll use a simplified lookup by region
+const regionMap = {
+  // Africa
+  12:"Africa",24:"Africa",204:"Africa",72:"Africa",854:"Africa",108:"Africa",120:"Africa",132:"Africa",
+  140:"Africa",148:"Africa",174:"Africa",178:"Africa",180:"Africa",262:"Africa",818:"Africa",231:"Africa",
+  266:"Africa",288:"Africa",324:"Africa",624:"Africa",384:"Africa",404:"Africa",426:"Africa",430:"Africa",
+  434:"Africa",450:"Africa",454:"Africa",466:"Africa",478:"Africa",504:"Africa",508:"Africa",516:"Africa",
+  562:"Africa",566:"Africa",646:"Africa",686:"Africa",694:"Africa",706:"Africa",710:"Africa",
+  716:"Africa",728:"Africa",729:"Africa",800:"Africa",818:"Africa",834:"Africa",788:"Africa",894:"Africa",
+  732:"Africa",678:"Africa",768:"Africa",887:"Africa",
+  // Asia
+  4:"Asia",50:"Asia",64:"Asia",96:"Asia",116:"Asia",156:"Asia",344:"Asia",446:"Asia",356:"Asia",
+  360:"Asia",364:"Asia",368:"Asia",376:"Asia",392:"Asia",400:"Asia",398:"Asia",408:"Asia",410:"Asia",
+  414:"Asia",417:"Asia",418:"Asia",422:"Asia",462:"Asia",496:"Asia",104:"Asia",524:"Asia",
+  512:"Asia",586:"Asia",634:"Asia",643:"Asia",682:"Asia",702:"Asia",144:"Asia",760:"Asia",
+  762:"Asia",764:"Asia",626:"Asia",792:"Asia",795:"Asia",784:"Asia",860:"Asia",704:"Asia",887:"Asia",
+  275:"Asia",
+  // Europe
+  8:"Europe",20:"Europe",40:"Europe",112:"Europe",56:"Europe",70:"Europe",100:"Europe",191:"Europe",
+  196:"Europe",203:"Europe",208:"Europe",233:"Europe",246:"Europe",250:"Europe",276:"Europe",300:"Europe",
+  348:"Europe",352:"Europe",372:"Europe",380:"Europe",428:"Europe",438:"Europe",440:"Europe",442:"Europe",
+  470:"Europe",498:"Europe",492:"Europe",499:"Europe",528:"Europe",578:"Europe",616:"Europe",620:"Europe",
+  642:"Europe",703:"Europe",705:"Europe",724:"Europe",752:"Europe",756:"Europe",804:"Europe",826:"Europe",
+  // North America
+  28:"North America",44:"North America",52:"North America",84:"North America",124:"North America",
+  188:"North America",192:"North America",212:"North America",214:"North America",222:"North America",
+  308:"North America",320:"North America",332:"North America",340:"North America",388:"North America",
+  484:"North America",558:"North America",591:"North America",659:"North America",662:"North America",
+  670:"North America",780:"North America",840:"North America",
+  // South America
+  32:"South America",68:"South America",76:"South America",152:"South America",170:"South America",
+  218:"South America",238:"South America",254:"South America",328:"South America",600:"South America",
+  604:"South America",740:"South America",858:"South America",862:"South America",
+  // Oceania
+  36:"Oceania",242:"Oceania",296:"Oceania",584:"Oceania",583:"Oceania",520:"Oceania",554:"Oceania",
+  585:"Oceania",598:"Oceania",882:"Oceania",90:"Oceania",776:"Oceania",548:"Oceania",
+  // Antarctica
+  10:"Antarctica",
+};
+
+function getContinent(id) {
+  return regionMap[+id] || "Other";
+}
+
+function getColor(feature, mode) {
+  if (mode === "single") return singleColor;
+  const continent = getContinent(feature.id);
+  return continentColors[continent] || "#4a5568";
+}
+
+// Setup
+const svg = d3.select("#map");
+const container = document.getElementById("map-container");
+const tooltip = document.getElementById("tooltip");
+const infoPanel = document.getElementById("info-panel");
+
+let width, height, projection, path, g, zoom;
+let currentProjection = "naturalEarth1";
+let colorMode = "continent";
+let worldData = null;
+
+function getProjection(name, w, h) {
+  const cx = w / 2, cy = h / 2;
+  switch (name) {
+    case "orthographic":
+      return d3.geoOrthographic().scale(Math.min(w, h) / 2.1).translate([cx, cy]).clipAngle(90);
+    case "mercator":
+      return d3.geoMercator().scale(w / 6.8).translate([cx, cy * 1.2]);
+    case "equalEarth":
+      return d3.geoEqualEarth().scale(w / 6).translate([cx, cy]);
+    case "conicEqualArea":
+      return d3.geoConicEqualArea().scale(w / 7).translate([cx, cy]);
+    default: // naturalEarth1
+      return d3.geoNaturalEarth1().scale(w / 6).translate([cx, cy]);
+  }
+}
+
+function buildLegend() {
+  const el = document.getElementById("legend-items");
+  el.innerHTML = "";
+  if (colorMode === "single") {
+    el.innerHTML = `<div class="legend-item"><div class="legend-swatch" style="background:${singleColor}"></div><span>País</span></div>`;
+    return;
+  }
+  Object.entries(continentColors).forEach(([name, color]) => {
+    el.innerHTML += `<div class="legend-item"><div class="legend-swatch" style="background:${color}"></div><span>${name}</span></div>`;
+  });
+}
+
+function render() {
+  width = container.clientWidth;
+  height = container.clientHeight;
+
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+
+  projection = getProjection(currentProjection, width, height);
+  path = d3.geoPath().projection(projection);
+
+  svg.selectAll("*").remove();
+
+  zoom = d3.zoom()
+    .scaleExtent([0.5, 12])
+    .on("zoom", (event) => {
+      g.attr("transform", event.transform);
+      document.getElementById("zoom-info").textContent = `Zoom: ${event.transform.k.toFixed(1)}x`;
+    });
+
+  svg.call(zoom);
+
+  // Drag rotation for orthographic
+  if (currentProjection === "orthographic") {
+    let lastPos = null;
+    svg.on("mousedown.drag", (e) => { lastPos = [e.clientX, e.clientY]; })
+       .on("mousemove.drag", (e) => {
+         if (!lastPos || !e.buttons) { lastPos = null; return; }
+         const dx = e.clientX - lastPos[0];
+         const dy = e.clientY - lastPos[1];
+         const rot = projection.rotate();
+         projection.rotate([rot[0] + dx * 0.3, rot[1] - dy * 0.3]);
+         g.selectAll(".country").attr("d", path);
+         g.selectAll(".graticule").attr("d", path);
+         g.select(".outline").attr("d", path);
+         lastPos = [e.clientX, e.clientY];
+       });
+  } else {
+    svg.on("mousedown.drag", null).on("mousemove.drag", null);
+  }
+
+  g = svg.append("g");
+
+  // Ocean
+  g.append("path")
+    .datum({type:"Sphere"})
+    .attr("class","sphere")
+    .attr("d", path);
+
+  // Graticule
+  const graticule = d3.geoGraticule()();
+  g.append("path")
+    .datum(graticule)
+    .attr("class","graticule")
+    .attr("d", path);
+
+  if (!worldData) return;
+
+  const countries = topojson.feature(worldData, worldData.objects.countries);
+
+  g.selectAll(".country")
+    .data(countries.features)
+    .join("path")
+    .attr("class","country")
+    .attr("d", path)
+    .attr("fill", d => getColor(d, colorMode))
+    .attr("fill-opacity", 0.85)
+    .on("mousemove", (event, d) => {
+      const name = d.properties.name || `País ${d.id}`;
+      const continent = getContinent(d.id);
+      document.getElementById("tt-name").textContent = name;
+      document.getElementById("tt-continent").textContent = continent;
+      tooltip.classList.add("visible");
+      const rect = container.getBoundingClientRect();
+      let x = event.clientX - rect.left + 14;
+      let y = event.clientY - rect.top - 10;
+      if (x + 200 > width) x -= 210;
+      tooltip.style.left = x + "px";
+      tooltip.style.top = y + "px";
+    })
+    .on("mouseleave", () => tooltip.classList.remove("visible"))
+    .on("click", (event, d) => {
+      const name = d.properties.name || `País ${d.id}`;
+      const continent = getContinent(d.id);
+      document.getElementById("panel-name").textContent = name;
+      document.getElementById("panel-continent").textContent = continent;
+      document.getElementById("panel-code").textContent = d.id || "—";
+      infoPanel.classList.add("visible");
+    });
+
+  // Outline
+  g.append("path")
+    .datum({type:"Sphere"})
+    .attr("class","outline")
+    .attr("d", path);
+
+  buildLegend();
+}
+
+// Load world data
+d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json")
+  .then(data => {
+    worldData = data;
+    render();
+  })
+  .catch(() => {
+    // Fallback message
+    svg.append("text")
+      .attr("x", "50%").attr("y", "50%")
+      .attr("text-anchor","middle")
+      .attr("fill","#8b949e")
+      .text("Erro ao carregar o mapa. Verifique sua conexão.");
+  });
+
+// Controls
+document.getElementById("projection-select").addEventListener("change", e => {
+  currentProjection = e.target.value;
+  render();
+});
+
+document.getElementById("color-select").addEventListener("change", e => {
+  colorMode = e.target.value;
+  if (worldData) {
+    g.selectAll(".country").attr("fill", d => getColor(d, colorMode));
+    buildLegend();
+  }
+});
+
+document.getElementById("reset-btn").addEventListener("click", () => {
+  svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
+  if (currentProjection === "orthographic") {
+    projection.rotate([0, 0]);
+    g.selectAll(".country").attr("d", path);
+    g.selectAll(".graticule").attr("d", path);
+    g.select(".outline").attr("d", path);
+  }
+  document.getElementById("zoom-info").textContent = "Scroll para zoom · Arraste para mover";
+});
+
+document.getElementById("close-panel").addEventListener("click", () => {
+  infoPanel.classList.remove("visible");
+});
+
+window.addEventListener("resize", render);
+</script>
+</body>
+</html>
