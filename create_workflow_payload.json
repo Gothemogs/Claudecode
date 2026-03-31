@@ -34,9 +34,9 @@
           }
         },
         {
-          "name": "uf_ocorrencia",
+          "name": "bairro_ocorrencia",
           "value": {
-            "propertyName": "estado",
+            "propertyName": "bairro",
             "type": "OBJECT_PROPERTY"
           }
         }

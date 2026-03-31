@@ -89,14 +89,14 @@ Quando um negócio é **inscrito manualmente** no workflow:
 | Nome | Propriedade | Tipo |
 |------|-------------|------|
 | `deal_id` | `hs_object_id` | OBJECT_PROPERTY |
-| `uf_ocorrencia` | `estado` | OBJECT_PROPERTY |
+| `bairro_ocorrencia` | `bairro` | OBJECT_PROPERTY |
 
 ### Outputs
 
 | Nome | Tipo |
 |------|------|
 | `encontrado` | STRING |
-| `uf_recebida` | STRING |
+| `bairro_recebido` | STRING |
 | `decisor_email` | STRING |
 | `outros_contatos_json` | STRING |
 | `protegidos` | STRING |
@@ -116,7 +116,7 @@ from typing import Optional, List, Set
 
 HUBSPOT_TOKEN = os.environ["Hub_DB"]
 AIRTABLE_TOKEN = os.environ["airtable_token"]
-HUBDB_TABLE_ID = "224702045"
+HUBDB_TABLE_ID = "224700702"
 AIRTABLE_BASE_ID = "app1uxxj9gL9otgrB"
 AIRTABLE_TABLE = "local"
 AIRTABLE_FIELD_EMAIL = "fldpy0Ufbxm9K4iKq"
@@ -161,7 +161,7 @@ def buscar_uf_hubdb(nome_uf: str) -> Optional[dict]:
         resultados = data.get("results", [])
 
         for row in resultados:
-            uf_row = normalizar(row.get("values", {}).get("uf", "") or "")
+            uf_row = normalizar(row.get("values", {}).get("bairro", "") or "")
             if uf_row == uf_norm:
                 return row
 
@@ -235,7 +235,7 @@ def buscar_contato_por_email(email: str) -> str:
 def main(event):
     inputs = event.get("inputFields", {})
     deal_id = str(inputs.get("deal_id", "")).strip()
-    uf = str(inputs.get("uf_ocorrencia", "")).strip()
+    uf = str(inputs.get("bairro_ocorrencia", "")).strip()
 
     # ── Locais associados ao negócio ───────────────────────────────────────────
     locais_ids = get_associacoes("deals", deal_id, LOCAL_OBJECT_TYPE) if deal_id else []
@@ -282,7 +282,7 @@ def main(event):
     return {
         "outputFields": {
             "encontrado": encontrado,
-            "uf_recebida": uf,
+            "bairro_recebido": uf,
             "decisor_email": decisor_email,
             "outros_contatos_json": json.dumps(outros_contatos_ids),
             "protegidos": protegidos,
@@ -436,11 +436,11 @@ def main(event):
 
 | Item | ID |
 |------|-----|
-| HubDB Table ID (UF) | `224702045` |
+| HubDB Table ID (Bairro) | `224700702` |
 | Local Object Type | `2-17828781` |
 | Airtable Base ID | `app1uxxj9gL9otgrB` |
 | Airtable Field (e-mail rep. legal) | `fldpy0Ufbxm9K4iKq` |
-| Propriedade UF no negócio | `estado` |
+| Propriedade Bairro no negócio | `bairro` |
 
 ---
 
