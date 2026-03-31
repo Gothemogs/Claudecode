@@ -1,42 +1,52 @@
-# Workflow: Ticket [Retenção]: Envio de E-mails Anti-Churn por UF
+# Workflow: [Ticket] - E-mail Off Boarding (Dados em Tempo Real) V3
 
 ## Informações Gerais
 
 | Campo | Valor |
 |-------|-------|
-| **Nome sugerido** | Ticket [Retenção]: Envio de e-mails anti-churn por UF |
-| **Tipo** | TICKET_FLOW (Workflow de Ticket) |
+| **ID** | `1796684196` |
+| **Nome** | [Ticket] - E-mail Off Boarding (Dados em Tempo Real) V3 |
+| **Tipo** | PLATFORM_FLOW (Workflow de Ticket) |
 | **Object Type ID** | 0-5 (Tickets) |
-| **Re-enrollment** | Habilitado |
+| **Re-enrollment** | Desabilitado |
+| **Revisão** | 25 |
+| **Criado em** | 2026-03-26 |
+| **Atualizado em** | 2026-03-30 |
 
 ---
 
 ## Objetivo
 
-Quando um ticket é **criado** no pipeline **"Retenção"**, o workflow:
+Quando um ticket é criado no pipeline **"Retenção"** (ID: `52153112`), com as condições:
+- `tipo_de_retencao` **NÃO** é "Proativa"
+- `motivo_do_cancelamento` **NÃO** é "Inadimplente"
 
-1. Consulta a **tabela HubDB** pela `UF` do ticket → dados de segurança do estado
-2. Busca o **e-mail do síndico (decisor)** via Airtable: Local → `endereco` → tabela `local` → e-mail representante legal
-3. Envia **Modelo de E-mail A (síndico)** imediatamente ao criar o ticket
-4. Aguarda o ticket entrar em **"Em tratativa"**
-5. Envia **Modelo de E-mail B (moradores)** aos contatos associados ao local
+O workflow:
 
-O modelo de e-mail é selecionado dinamicamente pela UF do ticket.
-
-> **Versão derivada de:** `workflow_churn_email_retenção.md`
+1. Aguarda **10 minutos**
+2. Consulta a **tabela HubDB** pela `UF` do ticket → dados de segurança do estado
+3. Busca o **e-mail do síndico (decisor)** via Airtable: Local → `endereco` → tabela `local` → e-mail representante legal
+4. Envia **Modelo de E-mail A (síndico)** — template selecionado pela UF
+5. Aguarda o ticket entrar em **"Em tratativa"** (stage ID: `105781013`)
+6. Envia **Modelo de E-mail B (moradores)** aos contatos associados ao local — com `previa` (D+15)
 
 ---
 
 ## Fluxo Visual
 
 ```
-[TRIGGER] Ticket criado no pipeline "Retenção"
+[TRIGGER] Ticket criado no pipeline "Retenção" (52153112)
+    │      Filtros: tipo_de_retencao ≠ "Proativa"
+    │               motivo_do_cancelamento ≠ "Inadimplente"
     │
     ▼
-[AÇÃO 1] Custom Code: Busca HubDB + Airtable + Dados do Local + Owner
+[DELAY] Aguardar 10 minutos (Action 6)
+    │
+    ▼
+[AÇÃO 1] Custom Code: Busca HubDB + Airtable + Dados do Local + Owner (Action 1)
     - Lê UF, owner_id do ticket
     - Consulta HubDB pela UF → protegidos, indiciados, ocorrencias
-    - Busca Local → lê "endereco" (Identificador) e "logradouro"
+    - Busca Local → lê "endereco" (Identificador), "endereco_" e "no_do_endereco"
     - Busca no Airtable pelo endereco → e-mail do síndico
     - Busca no HubSpot o contato com esse e-mail → exclui dos moradores
     - Resolve owner_id → nome, telefone, e-mail do responsável
@@ -44,35 +54,54 @@ O modelo de e-mail é selecionado dinamicamente pela UF do ticket.
     - Seleciona IDs dos templates (síndico + moradores) pela UF
     │
     ▼
-[BRANCH] UF encontrada na HubDB?
+[BRANCH] encontrado = "1"? (Action 2)
     │
-    ├── SIM ──▶ [AÇÃO 2] Envia e-mail ao síndico (template por UF)
+    ├── SIM ──▶ [AÇÃO 2] Envia e-mail ao síndico (Action 7)
     │                │
     │                ▼
-    │           [AGUARDAR ATÉ] hs_pipeline_stage = "Em tratativa" (timeout: 90 dias)
+    │           [AGUARDAR EVENTO] Ticket muda para stage "Em tratativa" (Action 8)
+    │                │   Timeout: 86400 minutos (60 dias)
     │                │
     │                ▼
-    │           [AÇÃO 3] Envia e-mail aos moradores (template por UF)
-    │                │   + calcula previa (D+15 da data de envio)
-    │                ▼
-    │           [FIM]
+    │           [BRANCH] Critérios do evento atendidos? (Action 9)
+    │                │
+    │                ├── SIM ──▶ [AÇÃO 3] Envia e-mail aos moradores (Action 10)
+    │                │                │   + calcula previa (D+15)
+    │                │                ▼
+    │                │           [FIM]
+    │                │
+    │                └── NÃO ──▶ [FIM] (Critérios de eventos não atendidos)
     │
     └── NÃO ──▶ [FIM]
 ```
 
 ---
 
-## Trigger
+## Trigger (Enrollment Criteria)
 
 | Campo | Valor |
 |-------|-------|
-| **Tipo** | Baseado em propriedade do ticket |
-| **Condição** | Ticket criado no pipeline "Retenção" |
-| **Re-enrollment** | Sim |
+| **Tipo** | LIST_BASED |
+| **Pipeline** | `52153112` (Retenção) |
+| **Filtro 1** | `tipo_de_retencao` IS_NONE_OF "Proativa" |
+| **Filtro 2** | `motivo_do_cancelamento` IS_NONE_OF "Inadimplente" |
+| **Re-enrollment** | Desabilitado |
+| **Un-enroll se critério não atendido** | Não |
 
 ---
 
-## Ação 1 — Custom Code: Busca e Prepara Todos os Dados
+## Action 6 — Delay (10 minutos)
+
+| Campo | Valor |
+|-------|-------|
+| **Tipo** | SINGLE_CONNECTION (actionTypeId: 0-1) |
+| **Delta** | 10 |
+| **Unidade** | MINUTES |
+| **Próxima ação** | Action 1 |
+
+---
+
+## Action 1 — Custom Code: Busca e Prepara Todos os Dados
 
 ### Configuração
 
@@ -80,9 +109,35 @@ O modelo de e-mail é selecionado dinamicamente pela UF do ticket.
 |-------|-------|
 | **Tipo** | CUSTOM_CODE |
 | **Runtime** | Python 3.9 |
-| **Secrets** | `automacao_hubspot`, `airtable_token` |
-| **Input** | `ticket_id` ← `hs_object_id`, `uf_ocorrencia` ← `UF`, `owner_id` ← `hubspot_owner_id` |
-| **Output** | `encontrado`, `protegidos`, `indiciados`, `ocorrencias`, `decisor_email`, `outros_contatos_json`, `proprietario_nome`, `wpp_ticket`, `email_ticket`, `endereco_logradouro`, `link_botao`, `template_sindico_id`, `template_moradores_id` |
+| **Secrets** | `Hub_DB`, `automacao_hubspot`, `airtable_token` |
+| **Próxima ação** | Action 2 (branch) |
+
+### Inputs
+
+| Nome | Propriedade | Tipo |
+|------|-------------|------|
+| `ticket_id` | `hs_object_id` | OBJECT_PROPERTY |
+| `uf_ocorrencia` | `estado__ocorrencia_` | OBJECT_PROPERTY |
+| `owner_id` | `hubspot_owner_id` | OBJECT_PROPERTY |
+
+### Outputs
+
+| Nome | Tipo |
+|------|------|
+| `decisor_email` | STRING |
+| `email_ticket` | STRING |
+| `encontrado` | STRING |
+| `endereco_logradouro` | STRING |
+| `indiciados` | STRING |
+| `link_botao` | STRING |
+| `ocorrencias` | STRING |
+| `outros_contatos_json` | STRING |
+| `owner_id` | STRING |
+| `proprietario_nome` | STRING |
+| `protegidos` | STRING |
+| `template_moradores_id` | STRING |
+| `template_sindico_id` | STRING |
+| `wpp_ticket` | STRING |
 
 ### Código Python
 
@@ -99,7 +154,7 @@ AIRTABLE_TOKEN = os.environ["airtable_token"]
 HUBDB_TABLE_ID = "224702045"
 AIRTABLE_BASE_ID = "app1uxxj9gL9otgrB"
 AIRTABLE_TABLE = "local"
-AIRTABLE_FIELD_EMAIL = "fldpy0Ufbxm9K4iKq"  # e-mail representante legal
+AIRTABLE_FIELD_EMAIL = "fldpy0Ufbxm9K4iKq"
 
 LOCAL_OBJECT_TYPE = "2-17828781"
 
@@ -107,9 +162,6 @@ HS_HEADERS = {
     "Authorization": f"Bearer {HUBSPOT_TOKEN}",
     "Content-Type": "application/json",
 }
-
-# ─── Mapeamento de proprietários ──────────────────────────────────────────────
-# Chave: hubspot_owner_id (string) | Valores: nome, telefone, e-mail
 
 OWNERS = {
     "82534080": {
@@ -135,8 +187,6 @@ OWNER_FALLBACK = {
     "email": "isabella.beca@gabriel.com.br",
 }
 
-# ─── Templates de e-mail por UF ───────────────────────────────────────────────
-
 TEMPLATES_SINDICO = {
     "sp": 208177673089,
     "rj": 208641991319,
@@ -149,8 +199,6 @@ TEMPLATES_MORADORES = {
     "mg": 208649371483,
 }
 
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def normalizar(texto: str) -> str:
     nfkd = unicodedata.normalize("NFKD", texto)
@@ -166,8 +214,6 @@ def get_safe(url, headers, params=None):
     except Exception:
         return {}
 
-
-# ─── HubDB ────────────────────────────────────────────────────────────────────
 
 def buscar_uf_hubdb(nome_uf: str) -> Optional[dict]:
     url = f"https://api.hubapi.com/cms/v3/hubdb/tables/{HUBDB_TABLE_ID}/rows"
@@ -194,8 +240,6 @@ def buscar_uf_hubdb(nome_uf: str) -> Optional[dict]:
 
     return None
 
-
-# ─── Airtable ─────────────────────────────────────────────────────────────────
 
 def buscar_email_decisor_airtable(endereco: str) -> str:
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE}"
@@ -225,8 +269,6 @@ def buscar_email_decisor_airtable(endereco: str) -> str:
         pass
     return ""
 
-
-# ─── Associações HubSpot ──────────────────────────────────────────────────────
 
 def get_associacoes(objeto_tipo: str, objeto_id: str, tipo_associado: str) -> List[str]:
     url = f"https://api.hubapi.com/crm/v4/objects/{objeto_tipo}/{objeto_id}/associations/{tipo_associado}"
@@ -258,28 +300,22 @@ def buscar_contato_por_email(email: str) -> str:
     return ""
 
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
-
 def main(event):
     inputs = event.get("inputFields", {})
     ticket_id = str(inputs.get("ticket_id", "")).strip()
     uf = str(inputs.get("uf_ocorrencia", "")).strip()
     owner_id = str(inputs.get("owner_id", "")).strip()
 
-    # ── Resolve proprietário do ticket ────────────────────────────────────────
     owner = OWNERS.get(owner_id, OWNER_FALLBACK)
     proprietario_nome = owner["nome"]
     wpp_ticket = owner["telefone"]
     email_ticket = owner["email"]
 
-    # ── Monta link WhatsApp ───────────────────────────────────────────────────
     wpp_digits = wpp_ticket.replace("-", "")
     link_botao = f"https://wa.me/55{wpp_digits}?text=Falar%20com%20o%20especialista"
 
-    # ── Locais associados ao ticket ────────────────────────────────────────────
     locais_ids = get_associacoes("tickets", ticket_id, LOCAL_OBJECT_TYPE) if ticket_id else []
 
-    # ── Decisor via Airtable + Logradouro do Local ─────────────────────────────
     decisor_email = ""
     decisor_contact_id = ""
     endereco_logradouro = ""
@@ -292,18 +328,15 @@ def main(event):
         if identificador:
             decisor_email = buscar_email_decisor_airtable(identificador)
 
-    # Busca o contato HubSpot do decisor para excluí-lo da lista de moradores
     if decisor_email:
         decisor_contact_id = buscar_contato_por_email(decisor_email)
 
-    # ── Contatos dos locais (moradores) — exclui o decisor ────────────────────
     todos_contatos_local: Set[str] = set()
     for local_id in locais_ids:
         todos_contatos_local.update(get_associacoes(LOCAL_OBJECT_TYPE, local_id, "contacts"))
 
     outros_contatos_ids = [c for c in todos_contatos_local if c != decisor_contact_id]
 
-    # ── Busca HubDB pela UF + seleciona templates ─────────────────────────────
     protegidos = ""
     indiciados = ""
     ocorrencias = ""
@@ -344,16 +377,16 @@ def main(event):
 
 ---
 
-## Branch — UF Encontrada?
+## Action 2 — Branch: UF Encontrada?
 
 | Condição | Destino |
 |----------|---------|
-| Output `encontrado` = `"1"` | Ramo SIM → Ação 2 |
-| Caso contrário | Ramo NÃO → Fim |
+| `encontrado` (da Action 1) = `"1"` | Action 7 (envio síndico) |
+| Caso contrário | Fim |
 
 ---
 
-## Ação 2 — Custom Code: Envia E-mail ao Síndico (Decisor)
+## Action 7 — Custom Code: Envia E-mail ao Síndico (Decisor)
 
 ### Configuração
 
@@ -361,9 +394,31 @@ def main(event):
 |-------|-------|
 | **Tipo** | CUSTOM_CODE |
 | **Runtime** | Python 3.9 |
-| **Secrets** | `automacao_hubspot` |
-| **Input** | `decisor_email`, `protegidos`, `indiciados`, `ocorrencias`, `proprietario_nome`, `wpp_ticket`, `email_ticket`, `endereco_logradouro`, `link_botao`, `template_sindico_id` |
-| **Output** | `enviado_sindico`, `erro_sindico` |
+| **Secrets** | `Hub_DB` |
+| **Próxima ação** | Action 8 (aguardar evento) |
+
+### Inputs
+
+| Nome | Origem |
+|------|--------|
+| `decisor_email` | Action 1 → `decisor_email` |
+| `protegidos` | Action 1 → `protegidos` |
+| `indiciados` | Action 1 → `indiciados` |
+| `ocorrencias` | Action 1 → `ocorrencias` |
+| `proprietario_nome` | Action 1 → `proprietario_nome` |
+| `wpp_ticket` | Action 1 → `wpp_ticket` |
+| `email_ticket` | Action 1 → `email_ticket` |
+| `endereco_logradouro` | Action 1 → `endereco_logradouro` |
+| `link_botao` | Action 1 → `link_botao` |
+| `template_sindico_id` | Action 1 → `template_sindico_id` |
+
+### Outputs
+
+| Nome | Tipo |
+|------|------|
+| `enviado_sindico` | STRING |
+| `erro_sindico` | STRING |
+| `erros` | STRING |
 
 ### Código Python
 
@@ -372,7 +427,7 @@ import os
 import json
 import requests
 
-HUBSPOT_TOKEN = os.environ["automacao_hubspot"]
+HUBSPOT_TOKEN = os.environ["Hub_DB"]
 
 HEADERS = {
     "Authorization": f"Bearer {HUBSPOT_TOKEN}",
@@ -427,18 +482,28 @@ def main(event):
 
 ---
 
-## Aguardar Até — Ticket em "Em Tratativa"
+## Action 8 — Aguardar Evento: Ticket em "Em Tratativa"
 
 | Campo | Valor |
 |-------|-------|
-| **Tipo** | Aguardar até propriedade |
-| **Condição** | `hs_pipeline_stage` = ID do estágio "Em tratativa" |
-| **Timeout** | 90 dias (ajustar conforme necessidade) |
-| **Comportamento no timeout** | Encerrar o fluxo |
+| **Tipo** | SINGLE_CONNECTION (actionTypeId: 0-29) |
+| **Evento** | `hs_pipeline_stage` muda para `105781013` ("Em tratativa") |
+| **Event Type ID** | `4-655002` |
+| **Timeout** | 86400 minutos (60 dias) |
+| **Próxima ação** | Action 9 (branch) |
 
 ---
 
-## Ação 3 — Custom Code: Envia E-mail aos Moradores
+## Action 9 — Branch: Critérios do Evento Atendidos?
+
+| Condição | Destino |
+|----------|---------|
+| `hs_event_criteria_met` = `"true"` | Action 10 (envio moradores) |
+| Caso contrário | Fim ("Critérios de eventos não atendidos") |
+
+---
+
+## Action 10 — Custom Code: Envia E-mail aos Moradores
 
 ### Configuração
 
@@ -446,9 +511,29 @@ def main(event):
 |-------|-------|
 | **Tipo** | CUSTOM_CODE |
 | **Runtime** | Python 3.9 |
-| **Secrets** | `automacao_hubspot` |
-| **Input** | `outros_contatos_json`, `protegidos`, `indiciados`, `ocorrencias`, `proprietario_nome`, `wpp_ticket`, `email_ticket`, `endereco_logradouro`, `link_botao`, `template_moradores_id` |
-| **Output** | `emails_enviados`, `erros` |
+| **Secrets** | `Hub_DB`, `automacao_hubspot` |
+
+### Inputs
+
+| Nome | Origem |
+|------|--------|
+| `outros_contatos_json` | Action 1 → `outros_contatos_json` |
+| `protegidos` | Action 1 → `protegidos` |
+| `indiciados` | Action 1 → `indiciados` |
+| `ocorrencias` | Action 1 → `ocorrencias` |
+| `proprietario_nome` | Action 1 → `proprietario_nome` |
+| `wpp_ticket` | Action 1 → `wpp_ticket` |
+| `email_ticket` | Action 1 → `email_ticket` |
+| `endereco_logradouro` | Action 1 → `endereco_logradouro` |
+| `link_botao` | Action 1 → `link_botao` |
+| `template_moradores_id` | Action 1 → `template_moradores_id` |
+
+### Outputs
+
+| Nome | Tipo |
+|------|------|
+| `emails_enviados` | STRING |
+| `erros` | STRING |
 
 ### Código Python
 
@@ -459,7 +544,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import Optional, List
 
-HUBSPOT_TOKEN = os.environ["automacao_hubspot"]
+HUBSPOT_TOKEN = os.environ["Hub_DB"]
 
 HEADERS = {
     "Authorization": f"Bearer {HUBSPOT_TOKEN}",
@@ -535,43 +620,6 @@ def main(event):
 
 ---
 
-## Outputs das Custom Codes
-
-### Ação 1
-
-| Output | Tipo | Descrição |
-|--------|------|-----------|
-| `encontrado` | String (`"0"` / `"1"`) | Se a UF foi localizada na HubDB |
-| `uf_recebida` | String | Valor da UF recebida do ticket |
-| `protegidos` | String | Protegidos no estado |
-| `indiciados` | String | Indiciados no estado |
-| `ocorrencias` | String | Ocorrências no estado |
-| `decisor_email` | String | E-mail do síndico (Airtable) |
-| `outros_contatos_json` | String (JSON array) | IDs dos contatos HubSpot associados ao local |
-| `proprietario_nome` | String | Nome do responsável pelo ticket |
-| `wpp_ticket` | String | Telefone do responsável (ex: `1193503-4998`) |
-| `email_ticket` | String | E-mail do responsável |
-| `endereco_logradouro` | String | Logradouro do local associado |
-| `link_botao` | String | Link WhatsApp do responsável |
-| `template_sindico_id` | String | ID do template do síndico para a UF |
-| `template_moradores_id` | String | ID do template de moradores para a UF |
-
-### Ação 2
-
-| Output | Tipo | Descrição |
-|--------|------|-----------|
-| `enviado_sindico` | String (`"0"` / `"1"`) | Se o e-mail ao síndico foi enviado |
-| `erro_sindico` | String | Detalhe do erro, se houver |
-
-### Ação 3
-
-| Output | Tipo | Descrição |
-|--------|------|-----------|
-| `emails_enviados` | String (número) | Total de e-mails enviados com sucesso |
-| `erros` | String (JSON array) | IDs de contatos com falha no envio |
-
----
-
 ## Templates de E-mail por UF
 
 ### Síndico (Decisor)
@@ -603,55 +651,38 @@ def main(event):
 
 ---
 
-## Configurações a Confirmar no HubSpot
+## IDs Importantes
 
-| O que confirmar | Variável no código |
-|-----------------|-------------------|
-| Nome interno da propriedade `UF` no ticket | `uf_ocorrencia` no input |
-| Nome interno da propriedade `Logradouro` no Local | `logradouro` — confirmar em Config > Propriedades > Objetos personalizados > Local |
-| ID do estágio "Em tratativa" | Na ação "Aguardar até" |
-| Secret `airtable_token` criado no HubSpot | Config > Integrações > Código privado > Segredos |
+| Item | ID |
+|------|-----|
+| Pipeline "Retenção" | `52153112` |
+| Stage "Em tratativa" | `105781013` |
+| HubDB Table ID (UF) | `224702045` |
+| Local Object Type | `2-17828781` |
+| Airtable Base ID | `app1uxxj9gL9otgrB` |
+| Airtable Field (e-mail rep. legal) | `fldpy0Ufbxm9K4iKq` |
+| Propriedade UF no ticket | `estado__ocorrencia_` |
 
 ---
 
-## Configuração no HubSpot (passo a passo)
+## Data Sources (Associações configuradas no workflow)
 
-### 1. Criar o Workflow
-- Automação > Workflows > Criar workflow
-- Tipo: **Baseado em ticket**
-- Trigger: ticket criado no pipeline "Retenção"
-- Habilitar re-enrollment
-
-### 2. Adicionar Ação 1 — Custom Code
-- **Inputs:** `ticket_id` (hs_object_id), `uf_ocorrencia` (UF), `owner_id` (hubspot_owner_id)
-- **Outputs:** todos os 14 campos listados acima
-- **Secrets:** `automacao_hubspot`, `airtable_token`
-
-### 3. Adicionar Branch
-- `encontrado` = `"1"` → ramo SIM
-
-### 4. Adicionar Ação 2 — Custom Code (síndico)
-- **Inputs:** `decisor_email`, `protegidos`, `indiciados`, `ocorrencias`, `proprietario_nome`, `wpp_ticket`, `email_ticket`, `endereco_logradouro`, `link_botao`, `template_sindico_id`
-- **Secret:** `automacao_hubspot`
-
-### 5. Adicionar "Aguardar até"
-- Propriedade `hs_pipeline_stage` = ID de "Em tratativa"
-- Timeout: 90 dias → encerrar
-
-### 6. Adicionar Ação 3 — Custom Code (moradores)
-- **Inputs:** `outros_contatos_json`, `protegidos`, `indiciados`, `ocorrencias`, `proprietario_nome`, `wpp_ticket`, `email_ticket`, `endereco_logradouro`, `link_botao`, `template_moradores_id`
-- **Secret:** `automacao_hubspot`
+| Nome | Objeto | Association Type ID | Categoria |
+|------|--------|-------|-----------|
+| `fetched_object_286679922` | Contacts (0-1) | 16 | HUBSPOT_DEFINED |
+| `fetched_object_286679923` | Contacts (0-1) | 16 | HUBSPOT_DEFINED |
+| `fetched_object_286679921` | Companies (0-2) | 339 | HUBSPOT_DEFINED |
 
 ---
 
 ## Diagrama de Relacionamento
 
 ```
-TICKET (pipeline: Retenção)
-  │  propriedades: UF, hubspot_owner_id
+TICKET (pipeline: Retenção 52153112)
+  │  propriedades: estado__ocorrencia_, hubspot_owner_id
   │
-  └── [associação] ──▶ LOCAL (objeto customizado)
-                           │  propriedades: endereco (Identificador), logradouro
+  └── [associação] ──▶ LOCAL (2-17828781)
+                           │  propriedades: endereco, endereco_, no_do_endereco
                            │
                            ├── [Airtable: Título = endereco]
                            │       └── e-mail representante legal → Modelo A (síndico)
@@ -663,8 +694,10 @@ TICKET (pipeline: Retenção)
 
 ## Observações
 
-- O nome interno da propriedade `Logradouro` no Local precisa ser confirmado em Config > Propriedades > Objetos personalizados > Local (usado como `logradouro` no código)
-- Se o owner do ticket estiver vazio ou não constar no mapeamento, o fallback é Isabella Beça automaticamente
-- `previa` é calculado no momento do envio dos moradores (D+15 da data em que o ticket entrou em "Em tratativa"), não na criação do ticket
-- Se o ticket nunca chegar em "Em tratativa" dentro de 90 dias, o e-mail dos moradores não é enviado
-- Os secrets `automacao_hubspot` e `airtable_token` devem ser declarados explicitamente em cada ação que os utiliza
+- O delay de 10 minutos antes da Ação 1 permite que todas as associações do ticket estejam completas
+- O nome interno da propriedade UF no ticket é `estado__ocorrencia_` (confirmado via JSON)
+- Se o owner do ticket estiver vazio ou não constar no mapeamento, o fallback é Isabella Beça
+- `previa` é calculado no momento do envio dos moradores (D+15), não na criação do ticket
+- Se o ticket nunca chegar em "Em tratativa" dentro de 60 dias (86400 min), o e-mail dos moradores não é enviado
+- O workflow tem re-enrollment **desabilitado**
+- Tickets com `tipo_de_retencao = "Proativa"` ou `motivo_do_cancelamento = "Inadimplente"` são excluídos do workflow
