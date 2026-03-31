@@ -160,13 +160,24 @@
     },
     {
       "parameters": {
-        "jsCode": "// Busca dados do Metabase (via input) e linhas do HubDB (via referência)\n// Mapeia Bairro → rowId para fazer upsert\n\nconst metabaseData = $input.all();\nconst hubdbResponse = $('HubDB: Buscar Linhas Existentes').all();\n\n// Extrair linhas do HubDB\nconst hubdbRows = hubdbResponse[0]?.json?.results || hubdbResponse[0]?.json?.objects || [];\n\n// Criar mapa: bairro (lowercase) → rowId\nconst bairroToRowId = {};\nfor (const row of hubdbRows) {\n  const bairroValue = row.values?.bairro || row.values?.Bairro || '';\n  if (bairroValue) {\n    bairroToRowId[bairroValue.toString().toLowerCase().trim()] = row.id;\n  }\n}\n\n// Enriquecer cada item do Metabase com o rowId correspondente\nconst output = [];\nfor (const item of metabaseData) {\n  const bairro = (item.json.bairro || '').toString().toLowerCase().trim();\n  const rowId = bairroToRowId[bairro];\n\n  if (rowId) {\n    output.push({\n      json: {\n        rowId: rowId,\n        bairro: item.json.bairro,\n        indiciados: item.json.indiciados,\n        protegidos: item.json.protegidos,\n        ocorrencias: item.json.ocorrencias\n      }\n    });\n  }\n}\n\nreturn output;"
+        "mode": "chooseBranch",
+        "output": "input1"
+      },
+      "id": "merge-aguardar",
+      "name": "Aguardar: Metabase + HubDB",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1500, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Busca dados do Metabase (Input 1 via merge) e linhas do HubDB (Input 2 via merge)\n// Mapeia Bairro → rowId para fazer upsert\n\nconst metabaseData = $input.all();\nconst hubdbResponse = $('HubDB: Buscar Linhas Existentes').all();\n\n// Extrair linhas do HubDB\nconst hubdbRows = hubdbResponse[0]?.json?.results || hubdbResponse[0]?.json?.objects || [];\n\n// Criar mapa: bairro (lowercase) → rowId\nconst bairroToRowId = {};\nfor (const row of hubdbRows) {\n  const bairroValue = row.values?.bairro || row.values?.Bairro || '';\n  if (bairroValue) {\n    bairroToRowId[bairroValue.toString().toLowerCase().trim()] = row.id;\n  }\n}\n\n// Enriquecer cada item do Metabase com o rowId correspondente\nconst output = [];\nfor (const item of metabaseData) {\n  const bairro = (item.json.bairro || '').toString().toLowerCase().trim();\n  const rowId = bairroToRowId[bairro];\n\n  if (rowId) {\n    output.push({\n      json: {\n        rowId: rowId,\n        bairro: item.json.bairro,\n        indiciados: item.json.indiciados,\n        protegidos: item.json.protegidos,\n        ocorrencias: item.json.ocorrencias\n      }\n    });\n  }\n}\n\nreturn output;"
       },
       "id": "mapear-bairro-rowid",
       "name": "Mapear Bairro → Row ID",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1500, 400]
+      "position": [1800, 400]
     },
     {
       "parameters": {
@@ -177,7 +188,7 @@
       "name": "Loop: Cada Bairro",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [1800, 400]
+      "position": [2100, 400]
     },
     {
       "parameters": {
@@ -201,7 +212,7 @@
       "name": "HubDB: Atualizar Linha",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2100, 400],
+      "position": [2400, 400],
       "credentials": {
         "httpHeaderAuth": {
           "id": "",
@@ -218,7 +229,7 @@
       "name": "Aguardar 2s (Rate Limit)",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [2400, 400]
+      "position": [2700, 400]
     },
     {
       "parameters": {
@@ -232,7 +243,7 @@
       "name": "HubDB: Publicar Tabela",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2700, 400],
+      "position": [3000, 400],
       "credentials": {
         "httpHeaderAuth": {
           "id": "",
@@ -327,6 +338,28 @@
       "main": [
         [
           {
+            "node": "Aguardar: Metabase + HubDB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubDB: Buscar Linhas Existentes": {
+      "main": [
+        [
+          {
+            "node": "Aguardar: Metabase + HubDB",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Aguardar: Metabase + HubDB": {
+      "main": [
+        [
+          {
             "node": "Mapear Bairro → Row ID",
             "type": "main",
             "index": 0
@@ -393,5 +426,5 @@
   "tags": [],
   "triggerCount": 1,
   "updatedAt": "2026-03-31T00:00:00.000Z",
-  "versionId": "2"
+  "versionId": "3"
 }
