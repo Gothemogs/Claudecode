@@ -89,11 +89,11 @@
             }
           ]
         },
-        "joinMode": "enrichInput1",
+        "joinMode": "keepEverything",
         "options": {}
       },
       "id": "merge-indiciados-protegidos",
-      "name": "Merge: Indiciados + Protegidos",
+      "name": "Merge: Protegidos + Indiciados",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [600, 200]
@@ -110,7 +110,7 @@
             }
           ]
         },
-        "joinMode": "enrichInput1",
+        "joinMode": "keepEverything",
         "options": {}
       },
       "id": "merge-final",
@@ -121,7 +121,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Renomeia colunas do Metabase para nomes padronizados\nconst items = $input.all();\n\nreturn items.map(item => {\n  const data = item.json;\n  return {\n    json: {\n      bairro: data['Bairro'] || data['bairro'] || '',\n      indiciados: data['Valores distintos de IDDesfecho'] || data['valores distintos de iddesfecho'] || 0,\n      protegidos: data['Soma de QtdProtegidos'] || data['soma de qtdprotegidos'] || 0,\n      ocorrencias: data['Contagem'] || data['contagem'] || 0\n    }\n  };\n});"
+        "jsCode": "// Renomeia colunas do Metabase para nomes padronizados\n// Bairros sem indiciados ou ocorrências recebem valor 0\nconst items = $input.all();\n\nreturn items.map(item => {\n  const data = item.json;\n  return {\n    json: {\n      bairro: data['Bairro'] || data['bairro'] || '',\n      indiciados: Number(data['Valores distintos de IDDesfecho'] || data['valores distintos de iddesfecho']) || 0,\n      protegidos: Number(data['Soma de QtdProtegidos'] || data['soma de qtdprotegidos']) || 0,\n      ocorrencias: Number(data['Contagem'] || data['contagem']) || 0\n    }\n  };\n}).filter(item => item.json.bairro !== '');"
       },
       "id": "normalizar-colunas",
       "name": "Normalizar Colunas",
@@ -251,29 +251,29 @@
         ]
       ]
     },
-    "Metabase: Indiciados (Q967)": {
+    "Metabase: Protegidos (Q1505)": {
       "main": [
         [
           {
-            "node": "Merge: Indiciados + Protegidos",
+            "node": "Merge: Protegidos + Indiciados",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Metabase: Protegidos (Q1505)": {
+    "Metabase: Indiciados (Q967)": {
       "main": [
         [
           {
-            "node": "Merge: Indiciados + Protegidos",
+            "node": "Merge: Protegidos + Indiciados",
             "type": "main",
             "index": 1
           }
         ]
       ]
     },
-    "Merge: Indiciados + Protegidos": {
+    "Merge: Protegidos + Indiciados": {
       "main": [
         [
           {
