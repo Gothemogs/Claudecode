@@ -79,6 +79,35 @@
     },
     {
       "parameters": {
+        "method": "GET",
+        "url": "https://api.hubapi.com/cms/v3/hubdb/tables/224700702/rows/draft",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "1000"
+            }
+          ]
+        }
+      },
+      "id": "get-hubdb-rows",
+      "name": "HubDB: Buscar Linhas Existentes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [300, 700],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "HubSpot API"
+        }
+      }
+    },
+    {
+      "parameters": {
         "mode": "combine",
         "combineBy": "combineByFields",
         "mergeByFields": {
@@ -131,42 +160,7 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "https://api.hubapi.com/cms/v3/hubdb/tables/224700702/rows/draft",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": false
-            }
-          }
-        },
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "limit",
-              "value": "1000"
-            }
-          ]
-        }
-      },
-      "id": "get-hubdb-rows",
-      "name": "HubDB: Buscar Linhas Existentes",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1200, 600],
-      "credentials": {
-        "httpHeaderAuth": {
-          "id": "",
-          "name": "HubSpot API"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "// Recebe dados do Metabase (Input 1) e linhas do HubDB (Input 2)\n// Mapeia Bairro → rowId para fazer upsert\n\nconst metabaseData = $('Normalizar Colunas').all();\nconst hubdbResponse = $('HubDB: Buscar Linhas Existentes').all();\n\n// Extrair linhas do HubDB\nconst hubdbRows = hubdbResponse[0]?.json?.results || hubdbResponse[0]?.json?.objects || [];\n\n// Criar mapa: bairro (lowercase) → { rowId, colunas atuais }\nconst bairroToRowId = {};\nfor (const row of hubdbRows) {\n  const bairroValue = row.values?.bairro || row.values?.Bairro || '';\n  if (bairroValue) {\n    bairroToRowId[bairroValue.toString().toLowerCase().trim()] = row.id;\n  }\n}\n\n// Enriquecer cada item do Metabase com o rowId correspondente\nconst output = [];\nfor (const item of metabaseData) {\n  const bairro = (item.json.bairro || '').toString().toLowerCase().trim();\n  const rowId = bairroToRowId[bairro];\n\n  if (rowId) {\n    output.push({\n      json: {\n        rowId: rowId,\n        bairro: item.json.bairro,\n        indiciados: item.json.indiciados,\n        protegidos: item.json.protegidos,\n        ocorrencias: item.json.ocorrencias\n      }\n    });\n  }\n}\n\nreturn output;"
+        "jsCode": "// Busca dados do Metabase (via input) e linhas do HubDB (via referência)\n// Mapeia Bairro → rowId para fazer upsert\n\nconst metabaseData = $input.all();\nconst hubdbResponse = $('HubDB: Buscar Linhas Existentes').all();\n\n// Extrair linhas do HubDB\nconst hubdbRows = hubdbResponse[0]?.json?.results || hubdbResponse[0]?.json?.objects || [];\n\n// Criar mapa: bairro (lowercase) → rowId\nconst bairroToRowId = {};\nfor (const row of hubdbRows) {\n  const bairroValue = row.values?.bairro || row.values?.Bairro || '';\n  if (bairroValue) {\n    bairroToRowId[bairroValue.toString().toLowerCase().trim()] = row.id;\n  }\n}\n\n// Enriquecer cada item do Metabase com o rowId correspondente\nconst output = [];\nfor (const item of metabaseData) {\n  const bairro = (item.json.bairro || '').toString().toLowerCase().trim();\n  const rowId = bairroToRowId[bairro];\n\n  if (rowId) {\n    output.push({\n      json: {\n        rowId: rowId,\n        bairro: item.json.bairro,\n        indiciados: item.json.indiciados,\n        protegidos: item.json.protegidos,\n        ocorrencias: item.json.ocorrencias\n      }\n    });\n  }\n}\n\nreturn output;"
       },
       "id": "mapear-bairro-rowid",
       "name": "Mapear Bairro → Row ID",
@@ -176,7 +170,7 @@
     },
     {
       "parameters": {
-        "batchSize": 1,
+        "batchSize": 5,
         "options": {}
       },
       "id": "loop-items",
@@ -194,7 +188,14 @@
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"values\": {\n    \"protegidos\": {{ $json.protegidos }},\n    \"indiciados\": {{ $json.indiciados }},\n    \"ocorrencias\": {{ $json.ocorrencias }}\n  }\n}",
-        "options": {}
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 2000
+            }
+          }
+        }
       },
       "id": "update-hubdb-row",
       "name": "HubDB: Atualizar Linha",
@@ -210,6 +211,17 @@
     },
     {
       "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "wait-rate-limit",
+      "name": "Aguardar 2s (Rate Limit)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2400, 400]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "https://api.hubapi.com/cms/v3/hubdb/tables/224700702/draft/publish",
         "authentication": "genericCredentialType",
@@ -220,7 +232,7 @@
       "name": "HubDB: Publicar Tabela",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2400, 400],
+      "position": [2700, 400],
       "credentials": {
         "httpHeaderAuth": {
           "id": "",
@@ -245,6 +257,11 @@
           },
           {
             "node": "Metabase: Ocorrências (Q970)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HubDB: Buscar Linhas Existentes",
             "type": "main",
             "index": 0
           }
@@ -310,17 +327,6 @@
       "main": [
         [
           {
-            "node": "HubDB: Buscar Linhas Existentes",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HubDB: Buscar Linhas Existentes": {
-      "main": [
-        [
-          {
             "node": "Mapear Bairro → Row ID",
             "type": "main",
             "index": 0
@@ -361,6 +367,17 @@
       "main": [
         [
           {
+            "node": "Aguardar 2s (Rate Limit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aguardar 2s (Rate Limit)": {
+      "main": [
+        [
+          {
             "node": "Loop: Cada Bairro",
             "type": "main",
             "index": 0
@@ -376,5 +393,5 @@
   "tags": [],
   "triggerCount": 1,
   "updatedAt": "2026-03-31T00:00:00.000Z",
-  "versionId": "1"
+  "versionId": "2"
 }
