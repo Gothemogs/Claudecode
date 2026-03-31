@@ -1,0 +1,141 @@
+{
+  "name": "[Negócio] - E-mail Renovação D+90",
+  "objectTypeId": "0-3",
+  "flowType": "WORKFLOW",
+  "isEnabled": false,
+  "startActionId": "1",
+  "nextAvailableActionId": "5",
+  "actions": [
+    {
+      "actionId": "1",
+      "actionTypeVersion": 0,
+      "actionTypeId": "0-1",
+      "connection": {
+        "edgeType": "STANDARD",
+        "nextActionId": "2"
+      },
+      "fields": {
+        "delta": "10",
+        "time_unit": "MINUTES"
+      },
+      "type": "SINGLE_CONNECTION"
+    },
+    {
+      "actionId": "2",
+      "secretNames": ["Hub_DB", "airtable_token"],
+      "sourceCode": "def main(event):\n    return {\"outputFields\": {\"encontrado\": \"0\", \"decisor_email\": \"\", \"outros_contatos_json\": \"[]\", \"protegidos\": \"\", \"indiciados\": \"\", \"ocorrencias\": \"\", \"endereco_logradouro\": \"\"}}\n",
+      "runtime": "PYTHON39",
+      "inputFields": [
+        {
+          "name": "deal_id",
+          "value": {
+            "propertyName": "hs_object_id",
+            "type": "OBJECT_PROPERTY"
+          }
+        },
+        {
+          "name": "uf_ocorrencia",
+          "value": {
+            "propertyName": "estado",
+            "type": "OBJECT_PROPERTY"
+          }
+        }
+      ],
+      "outputFields": [
+        {"name": "encontrado", "type": "STRING"},
+        {"name": "decisor_email", "type": "STRING"},
+        {"name": "outros_contatos_json", "type": "STRING"},
+        {"name": "protegidos", "type": "STRING"},
+        {"name": "indiciados", "type": "STRING"},
+        {"name": "ocorrencias", "type": "STRING"},
+        {"name": "endereco_logradouro", "type": "STRING"}
+      ],
+      "connection": {
+        "edgeType": "STANDARD",
+        "nextActionId": "3"
+      },
+      "type": "CUSTOM_CODE"
+    },
+    {
+      "actionId": "3",
+      "inputValue": {
+        "actionId": "2",
+        "dataKey": "encontrado",
+        "type": "FIELD_DATA"
+      },
+      "staticBranches": [
+        {
+          "branchValue": "1",
+          "connection": {
+            "edgeType": "STANDARD",
+            "nextActionId": "4"
+          }
+        }
+      ],
+      "type": "STATIC_BRANCH"
+    },
+    {
+      "actionId": "4",
+      "secretNames": ["Hub_DB"],
+      "sourceCode": "def main(event):\n    return {\"outputFields\": {\"enviado_sindico\": \"0\", \"emails_moradores_enviados\": \"0\", \"erros\": \"[]\"}}\n",
+      "runtime": "PYTHON39",
+      "inputFields": [
+        {
+          "name": "decisor_email",
+          "value": {
+            "actionId": "2",
+            "dataKey": "decisor_email",
+            "type": "FIELD_DATA"
+          }
+        },
+        {
+          "name": "outros_contatos_json",
+          "value": {
+            "actionId": "2",
+            "dataKey": "outros_contatos_json",
+            "type": "FIELD_DATA"
+          }
+        },
+        {
+          "name": "protegidos",
+          "value": {
+            "actionId": "2",
+            "dataKey": "protegidos",
+            "type": "FIELD_DATA"
+          }
+        },
+        {
+          "name": "indiciados",
+          "value": {
+            "actionId": "2",
+            "dataKey": "indiciados",
+            "type": "FIELD_DATA"
+          }
+        },
+        {
+          "name": "ocorrencias",
+          "value": {
+            "actionId": "2",
+            "dataKey": "ocorrencias",
+            "type": "FIELD_DATA"
+          }
+        },
+        {
+          "name": "endereco_logradouro",
+          "value": {
+            "actionId": "2",
+            "dataKey": "endereco_logradouro",
+            "type": "FIELD_DATA"
+          }
+        }
+      ],
+      "outputFields": [
+        {"name": "enviado_sindico", "type": "STRING"},
+        {"name": "emails_moradores_enviados", "type": "STRING"},
+        {"name": "erros", "type": "STRING"}
+      ],
+      "type": "CUSTOM_CODE"
+    }
+  ],
+  "type": "PLATFORM_FLOW"
+}
