@@ -1,0 +1,380 @@
+{
+  "name": "N8N + Metabase → HubDB (Atualização Diária)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Agendamento Diário 8h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dados.gabriel.com.br/api/card/967/query/json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "metabase-indiciados",
+      "name": "Metabase: Indiciados (Q967)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [300, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Metabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dados.gabriel.com.br/api/card/1505/query/json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "metabase-protegidos",
+      "name": "Metabase: Protegidos (Q1505)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [300, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Metabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://dados.gabriel.com.br/api/card/970/query/json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "metabase-ocorrencias",
+      "name": "Metabase: Ocorrências (Q970)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [300, 500],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Metabase API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByFields",
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "Bairro",
+              "field2": "Bairro"
+            }
+          ]
+        },
+        "joinMode": "enrichInput1",
+        "options": {}
+      },
+      "id": "merge-indiciados-protegidos",
+      "name": "Merge: Indiciados + Protegidos",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [600, 200]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByFields",
+        "mergeByFields": {
+          "values": [
+            {
+              "field1": "Bairro",
+              "field2": "Bairro"
+            }
+          ]
+        },
+        "joinMode": "enrichInput1",
+        "options": {}
+      },
+      "id": "merge-final",
+      "name": "Merge: Dados Completos",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Renomeia colunas do Metabase para nomes padronizados\nconst items = $input.all();\n\nreturn items.map(item => {\n  const data = item.json;\n  return {\n    json: {\n      bairro: data['Bairro'] || data['bairro'] || '',\n      indiciados: data['Valores distintos de IDDesfecho'] || data['valores distintos de iddesfecho'] || 0,\n      protegidos: data['Soma de QtdProtegidos'] || data['soma de qtdprotegidos'] || 0,\n      ocorrencias: data['Contagem'] || data['contagem'] || 0\n    }\n  };\n});"
+      },
+      "id": "normalizar-colunas",
+      "name": "Normalizar Colunas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.hubapi.com/cms/v3/hubdb/tables/224700702/rows/draft",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "1000"
+            }
+          ]
+        }
+      },
+      "id": "get-hubdb-rows",
+      "name": "HubDB: Buscar Linhas Existentes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 600],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "HubSpot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Recebe dados do Metabase (Input 1) e linhas do HubDB (Input 2)\n// Mapeia Bairro → rowId para fazer upsert\n\nconst metabaseData = $('Normalizar Colunas').all();\nconst hubdbResponse = $('HubDB: Buscar Linhas Existentes').all();\n\n// Extrair linhas do HubDB\nconst hubdbRows = hubdbResponse[0]?.json?.results || hubdbResponse[0]?.json?.objects || [];\n\n// Criar mapa: bairro (lowercase) → { rowId, colunas atuais }\nconst bairroToRowId = {};\nfor (const row of hubdbRows) {\n  const bairroValue = row.values?.bairro || row.values?.Bairro || '';\n  if (bairroValue) {\n    bairroToRowId[bairroValue.toString().toLowerCase().trim()] = row.id;\n  }\n}\n\n// Enriquecer cada item do Metabase com o rowId correspondente\nconst output = [];\nfor (const item of metabaseData) {\n  const bairro = (item.json.bairro || '').toString().toLowerCase().trim();\n  const rowId = bairroToRowId[bairro];\n\n  if (rowId) {\n    output.push({\n      json: {\n        rowId: rowId,\n        bairro: item.json.bairro,\n        indiciados: item.json.indiciados,\n        protegidos: item.json.protegidos,\n        ocorrencias: item.json.ocorrencias\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "id": "mapear-bairro-rowid",
+      "name": "Mapear Bairro → Row ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 400]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-items",
+      "name": "Loop: Cada Bairro",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1800, 400]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.hubapi.com/cms/v3/hubdb/tables/224700702/rows/{{ $json.rowId }}/draft",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"values\": {\n    \"protegidos\": {{ $json.protegidos }},\n    \"indiciados\": {{ $json.indiciados }},\n    \"ocorrencias\": {{ $json.ocorrencias }}\n  }\n}",
+        "options": {}
+      },
+      "id": "update-hubdb-row",
+      "name": "HubDB: Atualizar Linha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2100, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "HubSpot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/cms/v3/hubdb/tables/224700702/draft/publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "publish-hubdb",
+      "name": "HubDB: Publicar Tabela",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2400, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "HubSpot API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Agendamento Diário 8h": {
+      "main": [
+        [
+          {
+            "node": "Metabase: Indiciados (Q967)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Metabase: Protegidos (Q1505)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Metabase: Ocorrências (Q970)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metabase: Indiciados (Q967)": {
+      "main": [
+        [
+          {
+            "node": "Merge: Indiciados + Protegidos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metabase: Protegidos (Q1505)": {
+      "main": [
+        [
+          {
+            "node": "Merge: Indiciados + Protegidos",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge: Indiciados + Protegidos": {
+      "main": [
+        [
+          {
+            "node": "Merge: Dados Completos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Metabase: Ocorrências (Q970)": {
+      "main": [
+        [
+          {
+            "node": "Merge: Dados Completos",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge: Dados Completos": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Colunas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Colunas": {
+      "main": [
+        [
+          {
+            "node": "HubDB: Buscar Linhas Existentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubDB: Buscar Linhas Existentes": {
+      "main": [
+        [
+          {
+            "node": "Mapear Bairro → Row ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mapear Bairro → Row ID": {
+      "main": [
+        [
+          {
+            "node": "Loop: Cada Bairro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Cada Bairro": {
+      "main": [
+        [
+          {
+            "node": "HubDB: Publicar Tabela",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HubDB: Atualizar Linha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubDB: Atualizar Linha": {
+      "main": [
+        [
+          {
+            "node": "Loop: Cada Bairro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-31T00:00:00.000Z",
+  "versionId": "1"
+}
