@@ -21,8 +21,8 @@
       "parameters": {
         "method": "POST",
         "url": "https://dados.gabriel.com.br/api/card/967/query/json",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "metabaseApi",
         "options": {}
       },
       "id": "metabase-indiciados",
@@ -31,9 +31,9 @@
       "typeVersion": 4.2,
       "position": [300, 100],
       "credentials": {
-        "httpHeaderAuth": {
+        "metabaseApi": {
           "id": "",
-          "name": "Metabase API"
+          "name": "Metabase account"
         }
       }
     },
@@ -41,8 +41,8 @@
       "parameters": {
         "method": "POST",
         "url": "https://dados.gabriel.com.br/api/card/1505/query/json",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "metabaseApi",
         "options": {}
       },
       "id": "metabase-protegidos",
@@ -51,9 +51,9 @@
       "typeVersion": 4.2,
       "position": [300, 300],
       "credentials": {
-        "httpHeaderAuth": {
+        "metabaseApi": {
           "id": "",
-          "name": "Metabase API"
+          "name": "Metabase account"
         }
       }
     },
@@ -61,8 +61,8 @@
       "parameters": {
         "method": "POST",
         "url": "https://dados.gabriel.com.br/api/card/970/query/json",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "metabaseApi",
         "options": {}
       },
       "id": "metabase-ocorrencias",
@@ -71,9 +71,9 @@
       "typeVersion": 4.2,
       "position": [300, 500],
       "credentials": {
-        "httpHeaderAuth": {
+        "metabaseApi": {
           "id": "",
-          "name": "Metabase API"
+          "name": "Metabase account"
         }
       }
     },
