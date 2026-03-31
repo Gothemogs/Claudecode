@@ -350,7 +350,7 @@
           "values": [
             {
               "field1": "UF",
-              "field2": "UF"
+              "field2": "Estado"
             }
           ]
         },
@@ -365,7 +365,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const data = item.json;\n  return {\n    json: {\n      uf: data['UF'] || data['uf'] || '',\n      indiciados: Number(data['Valores distintos de IDDesfecho'] || data['valores distintos de iddesfecho']) || 0,\n      protegidos: Number(data['Soma de QtdProtegidos'] || data['soma de qtdprotegidos']) || 0,\n      ocorrencias: Number(data['Contagem'] || data['contagem']) || 0\n    }\n  };\n}).filter(item => item.json.uf !== '');"
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const data = item.json;\n  return {\n    json: {\n      uf: data['UF'] || data['uf'] || data['Estado'] || data['estado'] || '',\n      indiciados: Number(data['Valores distintos de IDDesfecho'] || data['valores distintos de iddesfecho']) || 0,\n      protegidos: Number(data['Soma de QtdProtegidos'] || data['soma de qtdprotegidos']) || 0,\n      ocorrencias: Number(data['Contagem'] || data['contagem']) || 0\n    }\n  };\n}).filter(item => item.json.uf !== '' && item.json.uf !== null && item.json.uf !== 'null');"
       },
       "id": "normalizar-uf",
       "name": "UF: Normalizar Colunas",
